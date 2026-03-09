@@ -587,28 +587,33 @@
       }
     }
   </style>
-</head>
-<div id="adminLogin" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+<div id="adminLogin" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;z-index:9999;">
   <div style="background:#111;padding:20px;border-radius:15px;width:300px;text-align:center;">
     <h3>Admin Login</h3>
-    <input id="adminPassword" placeholder="Lösenord" type="password" style="width:100%;padding:8px;margin:10px 0;">
+    <input id="adminPassword" type="password" placeholder="Lösenord" style="width:100%;padding:8px;margin:10px 0;">
     <button onclick="loginAdmin()">Logga in</button>
   </div>
 </div>
 
-<div id="adminPanel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
-  <div style="background:#111;padding:20px;border-radius:15px;width:350px;">
+<div id="adminPanel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;z-index:9999;">
+  <div style="background:#111;padding:20px;border-radius:15px;width:350px;text-align:center;">
     <h3>Admin Panel</h3>
 
-    <input id="banUser" placeholder="Namn att banna" style="width:100%;margin-bottom:8px;">
-    <button onclick="banUser()">Banna</button>
+    <input id="banUserInput" placeholder="Användare att banna" style="width:100%;margin-bottom:10px;">
+    <button onclick="adminBanUser()">Banna</button>
 
-    <input id="timeoutUser" placeholder="Namn timeout" style="width:100%;margin-top:10px;">
-    <button onclick="timeoutUser()">Timeout 5 min</button>
+    <br><br>
 
-    <button onclick="clearChat()" style="margin-top:10px;">Rensa chat</button>
+    <input id="timeoutUserInput" placeholder="Användare timeout" style="width:100%;margin-bottom:10px;">
+    <button onclick="adminTimeoutUser()">Timeout 5 min</button>
 
-    <button onclick="closeAdmin()" style="margin-top:10px;">Stäng</button>
+    <br><br>
+
+    <button onclick="adminClearChat()">Rensa chatten</button>
+
+    <br><br>
+
+    <button onclick="closeAdmin()">Stäng</button>
   </div>
 </div>
 <body class="blue">
@@ -1129,49 +1134,44 @@ function sendChatMessage() {
         activePlayersEl.textContent = "Aktiva spelare: --";
         addSystemChatMessage("Kunde inte ansluta chatten.");
       }
-      const ADMIN_PASSWORD = "superhemligt"; // ändra detta
+const ADMIN_PASSWORD = "1234"; // ändra detta
 
 let bannedUsers = {};
 let timeoutUsers = {};
 
-function openAdminLogin(){
-  document.getElementById("adminLogin").style.display="flex";
+function openAdminLogin() {
+  document.getElementById("adminLogin").style.display = "flex";
 }
 
-function loginAdmin(){
-  const pass=document.getElementById("adminPassword").value;
-  if(pass===ADMIN_PASSWORD){
-    document.getElementById("adminLogin").style.display="none";
-    document.getElementById("adminPanel").style.display="flex";
-  }else{
+function loginAdmin() {
+  const pass = document.getElementById("adminPassword").value;
+
+  if (pass === ADMIN_PASSWORD) {
+    document.getElementById("adminLogin").style.display = "none";
+    document.getElementById("adminPanel").style.display = "flex";
+  } else {
     alert("Fel lösenord");
   }
 }
 
-function closeAdmin(){
-  document.getElementById("adminPanel").style.display="none";
+function closeAdmin() {
+  document.getElementById("adminPanel").style.display = "none";
 }
 
-function banUser(){
-  const name=document.getElementById("banUser").value.trim();
-  if(!name)return;
-
-  bannedUsers[name.toLowerCase()]=true;
-  alert(name+" bannad");
+function adminBanUser() {
+  const name = document.getElementById("banUserInput").value.toLowerCase();
+  bannedUsers[name] = true;
+  alert(name + " bannad");
 }
 
-function timeoutUser(){
-  const name=document.getElementById("timeoutUser").value.trim();
-  if(!name)return;
-
-  timeoutUsers[name.toLowerCase()]=Date.now()+5*60*1000;
-  alert(name+" timeout 5 min");
+function adminTimeoutUser() {
+  const name = document.getElementById("timeoutUserInput").value.toLowerCase();
+  timeoutUsers[name] = Date.now() + 5 * 60 * 1000;
+  alert(name + " timeoutad i 5 minuter");
 }
 
-function clearChat(){
-  if(chatRef){
-    chatRef.remove();
-  }
+function adminClearChat() {
+  if (chatRef) chatRef.remove();
 }
     })();
   </script>
