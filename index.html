@@ -499,27 +499,6 @@
 
     .game-card { position: relative; }
 
-    .game-thumb {
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      border-radius: 12px;
-      margin-bottom: 10px;
-      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
-      border: 1px solid rgba(255,255,255,.16);
-      object-fit: cover;
-      display: block;
-    }
-
-    .game-thumb.fallback {
-      display: grid;
-      place-items: center;
-      font-size: 28px;
-      font-weight: 900;
-      color: rgba(255,255,255,.9);
-      letter-spacing: 1px;
-      text-shadow: 0 4px 12px rgba(0,0,0,.45);
-    }
-
     .game-btn {
       width: 100%;
       padding: 22px;
@@ -622,23 +601,18 @@
 
     .profile-btn {
       position: fixed;
-      top: 12px;
-      right: 12px;
+      top: 14px;
+      right: 14px;
       z-index: 1200;
-      border: 1px solid rgba(255,255,255,.35);
-      border-radius: 16px;
-      padding: 14px 20px;
-      font-size: 17px;
-      font-weight: 800;
-      letter-spacing: .2px;
+      border: none;
+      border-radius: 12px;
+      padding: 11px 14px;
+      font-weight: 700;
       color: white;
-      background: linear-gradient(135deg, color-mix(in srgb, var(--accent-dark) 78%, #000), var(--accent), #ffffff1a);
+      background: linear-gradient(135deg, var(--accent-dark), var(--accent));
       cursor: pointer;
-      box-shadow: 0 12px 28px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.22);
-      transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+      box-shadow: 0 8px 18px rgba(0,0,0,.4);
     }
-    .profile-btn:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.26); filter: brightness(1.06); }
-    .profile-btn:active { transform: translateY(1px) scale(.98); }
     .chat-status { font-size: 12px; margin-bottom: 8px; opacity: .9; }
     .chat-msg { animation: popIn .25s ease; }
     @keyframes popIn { from { transform: translateY(8px); opacity: 0;} to { transform: translateY(0); opacity: 1; } }
@@ -693,29 +667,10 @@
     .private-friends { display:flex; gap:6px; overflow-x:auto; padding:8px; border-bottom:1px solid rgba(255,255,255,.12); }
     .private-friend-btn { border:none; border-radius:999px; padding:6px 12px; cursor:pointer; color:#fff; background:rgba(255,255,255,.14); white-space:nowrap; }
     .private-friend-btn.active { background: linear-gradient(135deg, var(--accent-dark), var(--accent)); }
-    .profile-modal-box {
-      background:
-        radial-gradient(circle at 0% 0%, rgba(99,102,241,.22), transparent 40%),
-        radial-gradient(circle at 100% 0%, rgba(236,72,153,.16), transparent 34%),
-        linear-gradient(155deg, rgba(10,10,16,.96), rgba(18,26,40,.95));
-      border: 1px solid rgba(120,180,255,.4);
-      box-shadow: 0 24px 44px rgba(0,0,0,.52);
-      padding: 18px;
-    }
-    .profile-modal-header { margin-bottom: 12px; }
-    .profile-modal-title { margin: 0; font-size: 26px; letter-spacing: .4px; }
-    .profile-modal-subtitle { margin: 6px 0 0; opacity: .82; font-size: 13px; }
-    .profile-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .profile-section {
-      background: linear-gradient(165deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
-      border:1px solid rgba(255,255,255,.2);
-      border-radius:14px;
-      padding:12px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-    }
-    .profile-section h4 { margin:0 0 10px; font-size: 16px; }
-    .profile-actions { display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 6px; }
-    .profile-actions .chat-send { flex:1; min-width: 110px; }
+    .profile-modal-box { background: linear-gradient(155deg, rgba(10,10,16,.95), rgba(18,26,40,.95)); border:1px solid rgba(120,180,255,.35); box-shadow: 0 20px 40px rgba(0,0,0,.45); }
+    .profile-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .profile-section { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px; }
+    .profile-section h4 { margin:0 0 8px; }
 
     .quest-list {
       display: grid;
@@ -797,9 +752,7 @@
       .loader-title { font-size: 20px; }
       .loader-message { font-size: 13px; }
 
-      .profile-btn { top: 10px; right: 10px; padding: 12px 14px; font-size: 15px; border-radius: 13px; }
       .profile-grid { grid-template-columns: 1fr; }
-      .profile-actions .chat-send { min-width: 100%; }
 
       .chat-panel {
         left: 10px;
@@ -944,17 +897,14 @@
 
   <div id="profileModal" class="modal" onclick="closeModalOnBackdrop(event, 'profileModal')">
     <div class="modal-box wide profile-modal-box">
-      <div class="profile-modal-header">
-        <h3 class="profile-modal-title">👤 Min Profil</h3>
-        <p class="profile-modal-subtitle">Hantera konto, vänner och din personliga stil.</p>
-      </div>
+      <h3>👤 Min Profil</h3>
       <div class="profile-grid">
         <div class="profile-section">
-          <h4>🔐 Inloggning</h4>
+          <h4>Inloggning</h4>
           <input id="authEmail" class="auth-input" type="email" placeholder="Mail" />
           <input id="authUsername" class="auth-input" maxlength="20" placeholder="Username (vid registrering)" />
           <input id="authPassword" class="auth-input" type="password" placeholder="Lösenord" />
-          <div class="profile-actions">
+          <div class="chat-row">
             <button class="chat-send" onclick="registerAccount()">Registrera</button>
             <button class="chat-send" onclick="loginAccount()">Logga in</button>
             <button class="chat-send" onclick="logoutAccount()">Logga ut</button>
@@ -962,7 +912,7 @@
           <div id="profileInfo" class="info-card"></div>
         </div>
         <div class="profile-section">
-          <h4>🤝 Kompisar</h4>
+          <h4>Kompisar</h4>
           <div class="chat-row">
             <input id="friendInput" class="chat-input" placeholder="Lägg till vän via username" />
             <button class="chat-send" onclick="sendFriendRequest()">Lägg till</button>
@@ -972,9 +922,7 @@
           <div id="privateChat" class="info-card" style="display:none;"></div>
         </div>
       </div>
-      <div class="profile-actions" style="margin-top:10px;">
-        <button class="chat-send" onclick="closeProfileModal()">Stäng</button>
-      </div>
+      <button class="chat-send" onclick="closeProfileModal()">Stäng</button>
     </div>
   </div>
 
@@ -1083,48 +1031,18 @@
     let activeChatTab = "global";
     let privateListenerRef = null;
     const SESSION_KEY = "v4AuthSession";
-    const preferredQuestGames = [
-      "clsummerRider3D", "climposter", "clworldguessr", "clslopeplus", "clretrobowl", "cltemplerun2",
-      "clsubwaysurfers", "clvex", "clpaperio", "cltinyfishing", "clbasketrandom", "clbasketballstars",
-      "cl8ballpool", "cldriftboss", "cldrivemad", "cleggycar", "cltunnelrush", "clcrossyroad",
-      "clsmashkarts", "clwrestlebros", "clvolleyrandom", "clmotoX3M", "clmotoX3M2", "clmotoX3Mspookyland",
-      "clgetawayshootout", "clrun3", "clstickmanhook", "clgeometrydash", "clsnowrider", "clbloonsTD5",
-      "clbitlife", "clchess", "clwordle", "clducklife", "clducklife2", "clducklife3"
+    const questsConfig = [
+      { id: "snow15", game: "clsummerRider3D", label: "Spela Snow Rider 3D 15 min", targetMs: 15*60*1000, reward: 10 },
+      { id: "imposter10", game: "climposter", label: "Spela Imposter 10 min", targetMs: 10*60*1000, reward: 8 },
+      { id: "guessr10", game: "clworldguessr", label: "Spela Worldguessr 10 min", targetMs: 10*60*1000, reward: 8 },
+      { id: "slope12", game: "clslopeplus", label: "Spela Slope Plus 12 min", targetMs: 12*60*1000, reward: 9 },
+      { id: "retrobowl8", game: "clretrobowl", label: "Spela Retro Bowl 8 min", targetMs: 8*60*1000, reward: 7 },
+      { id: "templerun7", game: "cltemplerun2", label: "Spela Temple Run 2 i 7 min", targetMs: 7*60*1000, reward: 6 },
+      { id: "subway9", game: "clsubwaysurfers", label: "Spela Subway Surfers 9 min", targetMs: 9*60*1000, reward: 8 },
+      { id: "vex8", game: "clvex", label: "Spela Vex i 8 min", targetMs: 8*60*1000, reward: 7 },
+      { id: "paperio10", game: "clpaperio", label: "Spela Paper.io 10 min", targetMs: 10*60*1000, reward: 9 },
+      { id: "tinyfish6", game: "cltinyfishing", label: "Spela Tiny Fishing 6 min", targetMs: 6*60*1000, reward: 5 }
     ];
-
-    function buildQuestsFromFiles() {
-      const availableSet = new Set(files);
-      const selectedGames = [];
-      const questDisplayName = (file) => {
-        const raw = file.replace(/^cl/i, "").trim();
-        return raw.replace(/^([^A-Za-zÅÄÖåäö]*)([a-zåäö])/, (_, prefix, letter) => prefix + letter.toUpperCase());
-      };
-
-      preferredQuestGames.forEach((game) => {
-        if (availableSet.has(game) && !selectedGames.includes(game)) selectedGames.push(game);
-      });
-
-      files.forEach((file) => {
-        const looksLikeGame = /^cl[\w-]+$/i.test(file);
-        if (!looksLikeGame || selectedGames.includes(file)) return;
-        if (selectedGames.length >= 40) return;
-        selectedGames.push(file);
-      });
-
-      return selectedGames.slice(0, 40).map((game, idx) => {
-        const minutes = 6 + (idx % 10);
-        const reward = Math.max(5, Math.round(minutes * 0.9));
-        return {
-          id: `quest_${idx + 1}_${game.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18)}`,
-          game,
-          label: `Spela ${questDisplayName(game)} i ${minutes} min`,
-          targetMs: minutes * 60 * 1000,
-          reward
-        };
-      });
-    }
-
-    const questsConfig = buildQuestsFromFiles();
     const shopItems = [
       { id: "sparkle", title: "✨ Namn-effekt", price: 15, desc: "Lägger till extra sparkle i ditt namn." },
       { id: "vip", title: "👑 VIP-tag", price: 25, desc: "Ger dig VIP-prefix i chatten." },
@@ -1167,45 +1085,6 @@
         return prefix + letter.toUpperCase();
       });
     };
-
-    function getGameThumbCandidates(file) {
-      return [
-        `UGS-Files/thumbnails/${file}.webp`,
-        `UGS-Files/thumbnails/${file}.png`,
-        `UGS-Files/${file}.webp`,
-        `UGS-Files/${file}.png`,
-        `UGS-Files/${file}.jpg`,
-        `UGS-Files/${file}.jpeg`
-      ];
-    }
-
-    function createGameThumb(file) {
-      const candidates = getGameThumbCandidates(file);
-      const img = document.createElement("img");
-      img.className = "game-thumb";
-      img.alt = `Förhandsbild för ${displayName(file)}`;
-      img.loading = "lazy";
-
-      let i = 0;
-      const tryNext = () => {
-        if (i >= candidates.length) {
-          const fallback = document.createElement("div");
-          fallback.className = "game-thumb fallback";
-          const initials = displayName(file).split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase();
-          fallback.textContent = initials || "🎮";
-          return fallback;
-        }
-        img.src = candidates[i++];
-        return img;
-      };
-
-      img.onerror = () => {
-        const next = tryNext();
-        if (next !== img && img.parentElement) img.replaceWith(next);
-      };
-
-      return tryNext();
-    }
 
     function openSidebar() {
       sidebar.classList.add("open");
@@ -1564,7 +1443,7 @@ function showInventory() {
       picks.forEach((file) => {
         const btn = document.createElement("button");
         btn.className = "game-btn recommended-btn";
-        btn.append(createGameThumb(file), document.createTextNode(displayName(file)));
+        btn.textContent = displayName(file);
         btn.onclick = () => openGame(file);
         recommendedRow.appendChild(btn);
       });
@@ -1612,7 +1491,7 @@ function showInventory() {
 
           const b = document.createElement("button");
           b.className = "game-btn";
-          b.append(createGameThumb(file), document.createTextNode(displayName(file)));
+          b.textContent = displayName(file);
           b.onclick = () => openGame(file);
 
           const f = document.createElement("span");
