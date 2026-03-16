@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -499,6 +498,27 @@
     }
 
     .game-card { position: relative; }
+
+    .game-thumb {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 12px;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.16);
+      object-fit: cover;
+      display: block;
+    }
+
+    .game-thumb.fallback {
+      display: grid;
+      place-items: center;
+      font-size: 28px;
+      font-weight: 900;
+      color: rgba(255,255,255,.9);
+      letter-spacing: 1px;
+      text-shadow: 0 4px 12px rgba(0,0,0,.45);
+    }
 
     .game-btn {
       width: 100%;
@@ -1029,21 +1049,23 @@
     const friendsListEl = document.getElementById("friendsList");
     const privateChatEl = document.getElementById("privateChat");
     const updates = [
-      "Här kommer uppdateringar synas, varje uppdatering kommer UNGEFÄR varje söndag. 👍",
-      "Nästa uppdatering --> söndag 22/3-26"
-      "Battlepass??? för att få ex coins, badges osv"
-      "Preview för alla spel så man kan se spelet innan man spelar det"
+      "Här kommer uppdateringar synas, varje uppdatering kommer ungefär varje söndag. 👍",
+      "Nästa uppdatering (SÖN 14/3) --> V4.1 ⬆",
+      "KANSKE en discord server (om fler vill ha en)",
+      "Quest och shop system där man kan göra quests ex: spela snowrider 3d 15 min. Så får man ex 10 coins som man kan spendera i shoppen på ex nåt till sin profil",
+      "Profil/kompis system där man kan logga in och göra sin egna profil. Man ska även kunna lägga till kompisar och ha privata chattar med de",
+      "Chatt-förbättringar jag ska lägga till bättre filter och göra chatten snyggare, man måste även vara inloggad för att kunna chatta",
+      "Admin-panel där JAG kan timeouta, banna och kicka folk från chatten. Kanske nåt mer????",
       "SKICKA FÖRSLAG!!!"
 
 ];
-  const firebaseConfig = {
+    const firebaseConfig = {
       apiKey: "AIzaSyAC_EFaFuRTGIWEQmMPhhI2Pq4CCkR7tMs",
       authDomain: "v4-sigma.firebaseapp.com",
       databaseURL: "https://v4-sigma-default-rtdb.europe-west1.firebasedatabase.app",
       projectId: "v4-sigma",
       appId: "1:348091861694:web:ff6f9945fae5fee9412cef"
     };
-
 
     let chatRef = null;
     let db = null;
@@ -1145,6 +1167,45 @@
         return prefix + letter.toUpperCase();
       });
     };
+
+    function getGameThumbCandidates(file) {
+      return [
+        `UGS-Files/thumbnails/${file}.webp`,
+        `UGS-Files/thumbnails/${file}.png`,
+        `UGS-Files/${file}.webp`,
+        `UGS-Files/${file}.png`,
+        `UGS-Files/${file}.jpg`,
+        `UGS-Files/${file}.jpeg`
+      ];
+    }
+
+    function createGameThumb(file) {
+      const candidates = getGameThumbCandidates(file);
+      const img = document.createElement("img");
+      img.className = "game-thumb";
+      img.alt = `Förhandsbild för ${displayName(file)}`;
+      img.loading = "lazy";
+
+      let i = 0;
+      const tryNext = () => {
+        if (i >= candidates.length) {
+          const fallback = document.createElement("div");
+          fallback.className = "game-thumb fallback";
+          const initials = displayName(file).split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase();
+          fallback.textContent = initials || "🎮";
+          return fallback;
+        }
+        img.src = candidates[i++];
+        return img;
+      };
+
+      img.onerror = () => {
+        const next = tryNext();
+        if (next !== img && img.parentElement) img.replaceWith(next);
+      };
+
+      return tryNext();
+    }
 
     function openSidebar() {
       sidebar.classList.add("open");
@@ -1503,7 +1564,7 @@ function showInventory() {
       picks.forEach((file) => {
         const btn = document.createElement("button");
         btn.className = "game-btn recommended-btn";
-        btn.textContent = displayName(file);
+        btn.append(createGameThumb(file), document.createTextNode(displayName(file)));
         btn.onclick = () => openGame(file);
         recommendedRow.appendChild(btn);
       });
@@ -1551,7 +1612,7 @@ function showInventory() {
 
           const b = document.createElement("button");
           b.className = "game-btn";
-          b.textContent = displayName(file);
+          b.append(createGameThumb(file), document.createTextNode(displayName(file)));
           b.onclick = () => openGame(file);
 
           const f = document.createElement("span");
