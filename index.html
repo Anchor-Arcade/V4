@@ -2550,7 +2550,8 @@ function showInventory() {
       const inv = user?.inventory || {};
       const equipped = user?.equipped || {};
       const owned = shopItems.filter((it) => inv[it.id]);
-      const active = owned.filter((it) => equipped[it.id]);
+      const hasAnyEquipped = Object.values(equipped || {}).some(Boolean);
+      const active = hasAnyEquipped ? owned.filter((it) => equipped[it.id]) : owned;
       const lv = getLevelFromXp(user?.xp || 0);
 
       const badges = active.map((it) => {
@@ -2565,7 +2566,8 @@ function showInventory() {
 
       const glowLayers = active.slice(0, 8).map((it, idx) => {
         const perk = getEffectPerk(it);
-        return `0 0 ${14 + idx * 2}px ${perk.color}${idx < 2 ? '' : '55'}`;
+        const alpha = idx < 2 ? 0.7 : 0.35;
+        return `0 0 ${14 + idx * 2}px hsl(${hashEffectToHue(it.effect || it.id || 'effect')} 88% 64% / ${alpha})`;
       }).join(', ');
 
       const dynamicStyle = glowLayers
