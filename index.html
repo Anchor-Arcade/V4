@@ -165,9 +165,23 @@
       top: 0;
       left: 0;
       height: 100%;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
       transform: translateX(-110%);
       transition: transform .25s ease;
       z-index: 1100;
+    }
+
+    .sidebar::-webkit-scrollbar {
+      width: 9px;
+    }
+
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,.24);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
     }
 
     .sidebar.open {
@@ -205,33 +219,72 @@
       line-height: 1.1;
     }
 
-       .chat-panel {
-      display: none !important;
-      position: fixed;
-      top: 72px;
-      left: 224px;
-      width: 320px;
-      height: calc(100dvh - 84px);
-      background: rgba(0, 0, 0, .72);
-      border: 1px solid rgba(255, 255, 255, .16);
-      border-radius: 14px;
-      backdrop-filter: blur(10px);
-      display: flex;
-      flex-direction: column;
-      transform: translateX(-24px);
-      opacity: 0;
-      pointer-events: none;
-      transition: transform .25s ease, opacity .2s ease;
-      z-index: 1080;
-      overflow: hidden;
+    .news-popup-box {
+      width: min(560px, 92vw);
+      background:
+        radial-gradient(circle at top right, rgba(59,130,246,.2), transparent 35%),
+        linear-gradient(160deg, rgba(8,12,24,.96), rgba(10,10,10,.92));
+      border: 1px solid rgba(255,255,255,.18);
+      box-shadow: 0 24px 50px rgba(0,0,0,.5);
     }
 
+    .news-popup-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
 
+    .news-popup-head h3 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: .4px;
+    }
 
-    .sidebar.open + .chat-panel {
-      transform: translateX(0);
-      opacity: 1;
-      pointer-events: auto;
+    .news-popup-close {
+      border: none;
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: #fff;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-dark), var(--accent));
+    }
+
+    .news-popup-note {
+      margin: 0 0 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      opacity: .82;
+    }
+
+    .news-popup-list {
+      display: grid;
+      gap: 10px;
+      max-height: min(60vh, 520px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .news-popup-item {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+
+    .news-popup-item strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .news-popup-item p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
     }
 
     .chat-header {
@@ -939,10 +992,6 @@
     .admin-badge.offline { background: rgba(180,40,40,.35); border-color: rgba(255,90,90,.45); }
     .admin-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px; }
 
-    .chat-tabs { display:flex; gap:6px; }
-    .chat-tab { border:none; border-radius:999px; padding:6px 10px; background:rgba(255,255,255,.12); color:#fff; font-weight:700; cursor:pointer; }
-    .chat-tab.active { background: linear-gradient(135deg, var(--accent-dark), var(--accent)); }
-    .chat-view { display:flex; flex-direction:column; min-height:0; flex:1; }
     .private-friends { display:flex; gap:6px; overflow-x:auto; padding:8px; border-bottom:1px solid rgba(255,255,255,.12); }
     .private-friend-btn { border:none; border-radius:999px; padding:6px 12px; cursor:pointer; color:#fff; background:rgba(255,255,255,.14); white-space:nowrap; }
     .private-friend-btn.active { background: linear-gradient(135deg, var(--accent-dark), var(--accent)); }
@@ -1057,13 +1106,6 @@
 
       #playArea { grid-template-columns: 1fr; }
       #embedContainer { width: 100%; }
-      .chat-panel {
-        left: 10px;
-        right: 10px;
-        width: auto;
-        top: 66px;
-        height: 46dvh;
-      }
     }
   </style>
 <body class="blue" id="appBody">
@@ -1079,7 +1121,7 @@
       <button class="sidebar-btn" onclick="openIframe('https://alv3333.github.io/Coola-Mattespel-Soundboard.github.io/')"><span class="icon">🔊</span><span class="label">Soundboard</span></button>
       <button class="sidebar-btn" onclick="openIframe('https://studio.pickaxe.co/STUDIOGX4LHRY55GYHQ15/295XP68K97')"><span class="icon">🤖</span><span class="label">AI</span></button>
       <button class="sidebar-btn" onclick="openIframe('https://docs.google.com/forms/d/e/1FAIpQLScUxR7Ychb0ivMguYI-3BHwb8D3ZH2x7n1vkpXuYjNeVlU3Cg/viewform?usp=header')"><span class="icon">📩</span><span class="label">Förslag</span></button>
-      <button class="sidebar-btn" onclick="showUpdates()"><span class="icon">⬆</span><span class="label">Uppdateringar</span></button>
+      <button class="sidebar-btn" onclick="openNewsPopup()"><span class="icon">📰</span><span class="label">Nyheter</span></button>
       <button class="sidebar-btn" onclick="showQuests()"><span class="icon">🎯</span><span class="label">Quests</span></button>
       <button class="sidebar-btn" onclick="showShop()"><span class="icon">🛒</span><span class="label">Shop</span></button>
       <button class="sidebar-btn" onclick="showInventory()"><span class="icon">🎒</span><span class="label">Inventory</span></button>
@@ -1087,35 +1129,40 @@
       <button class="sidebar-btn" onclick="openThemePopup()"><span class="icon">🎨</span><span class="label">Tema</span></button>
     </div>
 
-    <div class="chat-panel" id="chatPanel">
-      <div class="chat-header">
-        <span>💬 Chat</span>
-        <div class="chat-tabs">
-          <button id="globalTabBtn" class="chat-tab active" onclick="setChatTab('global')">Global</button>
-          <button id="privateTabBtn" class="chat-tab" onclick="setChatTab('private')">Privat</button>
+    <div id="newsPopup" class="modal" onclick="closeModalOnBackdrop(event, 'newsPopup')">
+      <div class="modal-box news-popup-box">
+        <div class="news-popup-head">
+          <h3>📰 Nyheter</h3>
+          <button class="news-popup-close" type="button" onclick="closeNewsPopup()">Stäng</button>
         </div>
-      </div>
-      <div id="globalChatView" class="chat-view">
-        <div class="chat-messages" id="chatMessages"></div>
-        <div class="chat-controls">
-          <div id="chatStatus" class="chat-status">Logga in för att chatta.</div>
-          <div class="chat-row">
-            <input id="chatInput" class="chat-input" maxlength="200" placeholder="Skriv meddelande..." />
-            <button id="chatSend" class="chat-send">Skicka</button>
+        <p class="news-popup-note">Ändra texten direkt här i <code>index.html</code> om du vill uppdatera vad som visas i popupen.</p>
+        <div class="news-popup-list">
+          <!-- ÄNDRA NYHETER HÄR I HTML-KODEN -->
+          <div class="news-popup-item">
+            <strong>Nya Nyheter!!!</strong>
+            <p>AmongUsMULTIPLAYER har kommit o funkar kuligt. Discorden e ÄNTLIGEN klar!!</p>
+          </div>
           </div>
         </div>
       </div>
-      <div id="privateChatView" class="chat-view" style="display:none;">
-        <div id="privateFriendsList" class="private-friends"></div>
-        <div id="privateMessages" class="chat-messages"></div>
-        <div class="chat-controls">
-          <div id="privateStatus" class="chat-status">Välj en vän för privat chatt.</div>
-          <div class="chat-row">
-            <input id="privateInput" class="chat-input" maxlength="200" placeholder="Privat meddelande..." />
-            <button id="privateSend" class="chat-send">Skicka</button>
-          </div>
-        </div>
+    </div>
+
+    <div id="chatSupportElements" style="display:none;">
+      <div id="globalChatView">
+        <div id="chatMessages"></div>
+        <div id="chatStatus"></div>
+        <input id="chatInput" />
+        <button id="chatSend" type="button">Skicka</button>
       </div>
+      <div id="privateChatView">
+        <div id="privateFriendsList"></div>
+        <div id="privateMessages"></div>
+        <div id="privateStatus"></div>
+        <input id="privateInput" />
+        <button id="privateSend" type="button">Skicka</button>
+      </div>
+      <button id="globalTabBtn" type="button">Global</button>
+      <button id="privateTabBtn" type="button">Privat</button>
     </div>
 
     <div class="main">
@@ -1602,8 +1649,22 @@ const embedContainer = document.getElementById("embedContainer");
       else openSidebar();
     }
 
+    function openNewsPopup() {
+      document.getElementById("newsPopup").style.display = "flex";
+      setPopupOpen(true);
+      closeSidebar();
+    }
+
+    function closeNewsPopup() {
+      document.getElementById("newsPopup").style.display = "none";
+      setPopupOpen(false);
+    }
+
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeSidebar();
+      if (e.key === "Escape") {
+        closeSidebar();
+        closeNewsPopup();
+      }
     });
     function showUpdates(){
 
@@ -2224,6 +2285,7 @@ function showInventory() {
       else addSystemChatMessage("Chatten är startad igen.");
     }
 
+
     function closeModalOnBackdrop(event, id) {
       if (event.target.id === id) {
         document.getElementById(id).style.display = "none";
@@ -2234,11 +2296,11 @@ function showInventory() {
     function setChatTab(tab) {
       activeChatTab = tab;
       const isGlobal = tab === "global";
-      document.getElementById("globalChatView").style.display = isGlobal ? "flex" : "none";
-      document.getElementById("privateChatView").style.display = isGlobal ? "none" : "flex";
+      document.getElementById("globalChatView").style.display = isGlobal ? "block" : "none";
+      document.getElementById("privateChatView").style.display = isGlobal ? "none" : "block";
       document.getElementById("globalTabBtn").classList.toggle("active", isGlobal);
       document.getElementById("privateTabBtn").classList.toggle("active", !isGlobal);
-      renderPrivateFriendsBar();
+      if (!isGlobal) renderPrivateFriendsBar();
     }
 
     function openProfileModal() { document.getElementById("profileModal").style.display = "flex"; setPopupOpen(true); renderProfile(); }
