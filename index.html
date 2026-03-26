@@ -398,7 +398,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .updates-list li .ul-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;margin-top:7px;}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
 </head>
 <body>
 <div class="bg"><div class="bg-grid"></div><div class="bg-noise"></div><div class="bg-orb o1"></div><div class="bg-orb o2"></div><div class="bg-orb o3"></div></div>
@@ -742,7 +742,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 /* =======================================================
    FIREBASE-KONFIGURATION (för konton över enheter)
    1. Skapa ett projekt i https://console.firebase.google.com
-   2. Aktivera Firestore Database
+   2. Aktivera Realtime Database
    3. Klistra in din web app-konfiguration nedan
    4. Fyll i en egen adapter om du vill ersätta localStorage-flödet fullt ut
    ======================================================= */
@@ -756,11 +756,11 @@ var FIREBASE_CONFIG={
   appId:"1:611002035280:web:964ca0a72daa2a69e53555"
 };
 var _sb=null;
-var _firestore=null;
+var _rtdb=null;
 try{
   if(FIREBASE_CONFIG.projectId!=="DIN_FIREBASE_PROJECT_ID"){
     if(!firebase.apps||!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
-    _firestore=firebase.firestore();
+    _rtdb=firebase.database();
     console.log("Firebase ansluten!");
   }else{
     console.log("Firebase ej konfigurerat - använder lokal lagring.");
@@ -1075,10 +1075,11 @@ function removeFriend(name){
 function searchProfiles(q){
   var el=document.getElementById("profileSearchResults");if(!el)return;
   if(!q||q.length<2){el.innerHTML="<p style='color:var(--d);font-size:12px'>Type to search users...</p>";return;}
-  if(!_firestore){el.innerHTML="<p style='color:var(--d);font-size:12px'>Not available offline</p>";return;}
-  _firestore.collection('user_data').limit(150).get().then(function(snap){
+  if(!_rtdb){el.innerHTML="<p style='color:var(--d);font-size:12px'>Not available offline</p>";return;}
+  _rtdb.ref('user_data').limitToFirst(200).once('value').then(function(snap){
     var rows=[];
-    snap.forEach(function(doc){var d=doc.data()||{};rows.push({username:d.username||doc.id,is_admin:!!d.is_admin,avatar:d.avatar||'',profile_ext:d.profile_ext||{}});});
+    var all=snap.val()||{};
+    Object.keys(all).forEach(function(k){var d=all[k]||{};rows.push({username:d.username||k,is_admin:!!d.is_admin,avatar:d.avatar||'',profile_ext:d.profile_ext||{}});});
     var ql=q.toLowerCase();
     rows=rows.filter(function(u){return (u.username||'').toLowerCase().indexOf(ql)>=0;}).slice(0,8);
     if(!rows.length){el.innerHTML="<p style='color:var(--d);font-size:12px'>No users found</p>";return;}
@@ -1150,8 +1151,8 @@ var _profileCache={};
 function _fetchUserProfile(u,cb){
   var now=Date.now();var c=_profileCache[u];
   if(c&&(now-c.ts)<600000){cb(c.data);return;}
-  if(!_firestore){cb(null);return;}
-  _firestore.collection('user_data').doc(u).get().then(function(doc){var d=(doc&&doc.data)?doc.data():null;if(d)_profileCache[u]={data:d,ts:Date.now()};cb(d);}).catch(function(){cb(null);});
+  if(!_rtdb){cb(null);return;}
+  _rtdb.ref('user_data/'+u).once('value').then(function(doc){var d=(doc&&doc.val)?doc.val():null;if(d)_profileCache[u]={data:d,ts:Date.now()};cb(d);}).catch(function(){cb(null);});
 }
 function saveState(){
   if(!state.user)return;
@@ -1170,8 +1171,23 @@ function loadState(u){
   }
 }
 function _cloudUserDoc(){
-  if(!_firestore||!state.user)return null;
-  return _firestore.collection('user_data').doc(state.user);
+  if(!_rtdb||!state.user)return null;
+  return _rtdb.ref('user_data/'+state.user);
+}
+function _collectCloudBundle(){
+  if(!state.user)return{};
+  var u=state.user;
+  var out={};
+  var prefixes=['quests_'+u+'_','qdp_'+u+'_','playtime_'+u+'_','daily_streak_'+u,'unlocked_'+u,'friends_'+u,'owned_'+u,'profile_ext_'+u,'avatar_'+u,'jspel_'+u];
+  for(var i=0;i<localStorage.length;i++){
+    var k=localStorage.key(i);if(!k)continue;
+    if(prefixes.some(function(p){return k.indexOf(p)===0||k===p;}))out[k]=localStorage.getItem(k);
+  }
+  return out;
+}
+function _applyCloudBundle(bundle){
+  if(!bundle||typeof bundle!=='object')return;
+  Object.keys(bundle).forEach(function(k){if(typeof bundle[k]==='string')localStorage.setItem(k,bundle[k]);});
 }
 function _cloudSnapshot(){
   if(!state.user)return null;
@@ -1185,20 +1201,21 @@ function _cloudSnapshot(){
     owned:JSON.parse(localStorage.getItem('owned_'+state.user)||'[]'),
     quests:JSON.parse(localStorage.getItem('quests_'+state.user+'_'+_todayKeyDate())||'{"claimed":[]}'),
     friends:JSON.parse(localStorage.getItem('friends_'+state.user)||'[]'),
-    updatedAt:Date.now()
+    updatedAt:Date.now(),
+    cloud_bundle:_collectCloudBundle()
   };
 }
 function _cloudPush(){
   var ref=_cloudUserDoc();
   var data=_cloudSnapshot();
   if(!ref||!data)return;
-  ref.set(data,{merge:true}).catch(function(){});
+  ref.update(data).catch(function(){});
 }
 function _cloudPull(cb){
   var ref=_cloudUserDoc();
   if(!ref){if(cb)cb();return;}
-  ref.get().then(function(doc){
-    var d=(doc&&doc.data)?doc.data():null;
+  ref.once('value').then(function(doc){
+    var d=(doc&&doc.val)?doc.val():null;
     if(d){
       state.coins=(d.coins!=null)?d.coins:state.coins;
       state.xp=(d.xp!=null)?d.xp:state.xp;
@@ -1211,23 +1228,24 @@ function _cloudPull(cb){
       if(Array.isArray(d.owned))localStorage.setItem('owned_'+state.user,JSON.stringify(d.owned));
       if(d.quests)localStorage.setItem('quests_'+state.user+'_'+_todayKeyDate(),JSON.stringify(d.quests));
       if(Array.isArray(d.friends))localStorage.setItem('friends_'+state.user,JSON.stringify(d.friends));
+      _applyCloudBundle(d.cloud_bundle||{});
       localStorage.setItem('jspel_'+state.user,JSON.stringify({coins:state.coins,xp:state.xp,level:state.level,favorites:state.favorites,gamesPlayed:state.gamesPlayed,settings:state.settings}));
     }
     if(cb)cb();
   }).catch(function(){if(cb)cb();});
 }
 
-function _ratingDoc(idx){return _firestore?_firestore.collection('game_ratings').doc(String(idx)):null;}
+function _ratingDoc(idx){return _rtdb?_rtdb.ref('game_ratings/'+String(idx)):null;}
 function _cloudPushRating(idx,stars){
   var ref=_ratingDoc(idx);
   if(!ref||!state.user)return;
-  ref.set({ratings:{[state.user]:stars},updatedAt:Date.now()},{merge:true}).catch(function(){});
+  ref.child('ratings/'+state.user).set(stars).then(function(){return ref.child('updatedAt').set(Date.now());}).catch(function(){});
 }
 function _cloudPullRating(idx,cb){
   var ref=_ratingDoc(idx);
   if(!ref){cb&&cb();return;}
-  ref.get().then(function(doc){
-    var data=(doc&&doc.data)?doc.data():null;
+  ref.once('value').then(function(doc){
+    var data=(doc&&doc.val)?doc.val():null;
     var r=(data&&data.ratings)||null;
     if(r&&typeof r==='object'){localStorage.setItem('ratings_'+idx,JSON.stringify(r));if(state.user&&r[state.user]!=null)localStorage.setItem('rating_'+idx+'_'+state.user,r[state.user]);}
     cb&&cb();
@@ -1290,9 +1308,13 @@ function renderAchievementsPanel(el){
 }
 function addCoins(n,reason){
   if(!state.user)return;
-  state.coins+=n;state.xp+=Math.floor(n/2);
+  var coinBoost=state.settings&&state.settings.boosts&&state.settings.boosts.coin_boost>Date.now();
+  var xpBoost=state.settings&&state.settings.boosts&&state.settings.boosts.xp_boost>Date.now();
+  var gain=coinBoost?Math.floor(n*2):n;
+  state.coins+=gain;
+  state.xp+=Math.floor((gain/2)*(xpBoost?2:1));
   saveState();updateHUD();
-  toast("+"+n+" mynt — "+reason);
+  toast("+"+gain+" mynt — "+reason+(coinBoost?" (x2 boost)":""));
   checkAchievements();
 }
 function gameIsLocked(idx){return false;}
@@ -1694,6 +1716,7 @@ function _setQuestDailyProg(key,val){
   var d=JSON.parse(localStorage.getItem(k)||'{}');
   d[key]=(d[key]||0)+val;
   localStorage.setItem(k,JSON.stringify(d));
+  _cloudPush();
 }
 function getQuests(){
   if(!state.user)return[];
@@ -1887,6 +1910,11 @@ function buyItem(id,price){
   if(id.startsWith('frame_')||id.startsWith('effect_')||id.startsWith('name_')||id.startsWith('badge_')){
     state.settings['cosmetic_'+id]=true;
   }
+  if(id==='xp_boost'||id==='coin_boost'){
+    if(!state.settings.boosts)state.settings.boosts={};
+    state.settings.boosts[id]=Date.now()+86400000;
+    toast('Boost aktiv i 24h! ⚡','ok');
+  }
   saveState();updateHUD();toast("Köpt! 🎉");renderShopPanel();updateQuests();
 }
 function renderSettingsPanel(targetEl){
@@ -1967,9 +1995,66 @@ function renderProfilePanel(){
 }
 
 
-function renderAdminPanel(){var el=document.getElementById('adminOverlayBody');if(!el)return;var users=getAllUsers();var totalMsgs=JSON.parse(localStorage.getItem('globalChat')||'[]').length;var bannedList=JSON.parse(localStorage.getItem('bannedUsers')||'[]');var announcements=JSON.parse(localStorage.getItem('admin_announcements')||'[]');var chatEnabled=isChatEnabled();el.innerHTML='<div style="padding:8px 0"><div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📊 Statistik</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+users.length+'</div><div style="font-size:10px;color:var(--d)">Användare</div></div><div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+totalMsgs+'</div><div style="font-size:10px;color:var(--d)">Chattmeddelanden</div></div><div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+bannedList.length+'</div><div style="font-size:10px;color:var(--d)">Bannade</div></div><div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+GAMES.length+'</div><div style="font-size:10px;color:var(--d)">Spel</div></div></div></div><div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">💬 Chat-kontroll</div><div style="font-size:12px;color:var(--m);margin-bottom:8px">Status: <b>'+(chatEnabled?'Aktiv ✅':'Stannad ⛔')+'</b></div><button onclick="toggleChatEnabled();renderAdminPanel()" style="width:100%;background:'+(chatEnabled?'rgba(255,50,50,.2);color:#ff7a7a;border:1px solid rgba(255,80,80,.3)':'rgba(0,200,100,.2);color:#7fffb3;border:1px solid rgba(127,255,179,.35)')+';border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:700">'+(chatEnabled?'⛔ Stanna chatten':'✅ Starta chatten')+'</button></div><div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📢 Broadcast</div><textarea id="adminBroadcastMsg" data-i18n-ph="chatPlaceholder" placeholder="Write a message..." style="width:100%;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--w);font-size:12px;font-family:inherit;resize:vertical;min-height:60px;box-sizing:border-box"></textarea><button onclick="adminBroadcast()" style="width:100%;margin-top:6px;background:var(--p0);color:#fff;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:600">📤 Skicka</button></div><div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📌 Tillkännagivanden</div><div style="display:flex;gap:6px;margin-bottom:8px"><input id="adminAnnounceInput" placeholder="Nytt tillkännagivande..." style="flex:1;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"><button onclick="addAnnouncement()" style="background:var(--p0);color:#fff;border:none;border-radius:8px;padding:7px 10px;cursor:pointer;font-size:12px">+</button></div>'+(announcements.length?announcements.map(function(a,i){return'<div style="background:rgba(255,255,255,.05);border-radius:6px;padding:6px 8px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--m)"><span>'+a+'</span><button onclick="removeAnnouncement('+i+')" style="background:rgba(255,50,50,.2);color:#ff6b6b;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px">✕</button></div>';}).join(''):'<div style="font-size:11px;color:var(--d);text-align:center;padding:8px">Inga tillkännagivanden</div>')+'</div><div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">💰 Ge mynt</div><div style="display:flex;gap:6px;margin-bottom:6px"><input id="adminCoinUser" placeholder="Användarnamn" style="flex:1;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"><input id="adminCoinAmount" type="number" placeholder="Antal" min="1" max="9999" style="width:70px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"></div><button onclick="adminGiveCoins()" style="width:100%;background:linear-gradient(135deg,#ffaa00,#ff6b00);color:#000;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:600">🪙 Ge mynt</button></div><div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">👥 Användare ('+users.length+')</div><div style="max-height:200px;overflow-y:auto">'+users.map(function(u){var isBanned=bannedList.indexOf(u)>=0;var uData=JSON.parse(localStorage.getItem('jspel_'+u)||'{}');return'<div style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:8px;background:rgba(255,255,255,.03);margin-bottom:4px"><div style="width:28px;height:28px;border-radius:50%;background:var(--p0);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0;color:#fff">'+u.charAt(0).toUpperCase()+'</div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--w);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+u+(isVerifiedUser(u)?' ✔️':'')+'</div><div style="font-size:10px;color:var(--d)">Mynt: '+(uData.coins||0)+' | Nivå: '+(uData.level||1)+'</div></div>'+(isBanned?'<button onclick="adminUnban(\'+u+\')" style="background:rgba(0,200,100,.2);color:#00c864;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px">Avbanna</button>':'<button onclick="adminKick(\'+u+\')" style="background:rgba(255,150,0,.15);color:#ff9600;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;margin-right:4px">Kicka</button><button onclick="adminBan(\'+u+\')" style="background:rgba(255,50,50,.15);color:#ff4040;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px">Banna</button>')+'<button onclick="adminToggleVerify(\'+u+\')" style="background:rgba(100,200,255,.2);color:#7ec8ff;border:none;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10px;margin-left:4px">'+(isVerifiedUser(u)?'Avverifiera':'Verifiera')+'</button>'+'</div>';}).join('')+'</div></div>'+
-'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🛡️ Admin-rättigheter</div><div style="display:flex;gap:6px;margin-bottom:6px"><input id="adminRoleUser" placeholder="Användarnamn" style="flex:1;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"><button onclick="var u=document.getElementById(\'adminRoleUser\').value.trim();if(u)adminToggleAdmin(u);" style="background:linear-gradient(135deg,var(--p0),var(--p2));color:#fff;border:none;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:600">Ge / Ta admin</button></div><div style="font-size:10px;color:var(--d)">Nuvarande admins: '+getAdminList().join(", ")+'</div></div>'+
-'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🗑️ Rensa chatt</div><button onclick="adminClearChat()" style="width:100%;background:rgba(255,50,50,.2);color:#ff6b6b;border:1px solid rgba(255,50,50,.3);border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:600">🗑️ Rensa all chatt</button></div></div>';}
+function renderAdminPanel(){
+  var el=document.getElementById('adminOverlayBody');if(!el)return;
+  var users=getAllUsers();
+  var totalMsgs=JSON.parse(localStorage.getItem('globalChat')||'[]').length;
+  var bannedList=JSON.parse(localStorage.getItem('bannedUsers')||'[]');
+  var announcements=JSON.parse(localStorage.getItem('admin_announcements')||'[]');
+  var chatEnabled=isChatEnabled();
+
+  var userRows=users.map(function(u){
+    var isBanned=bannedList.indexOf(u)>=0;
+    var uData=JSON.parse(localStorage.getItem('jspel_'+u)||'{}');
+    var verified=isVerifiedUser(u);
+    var actions=isBanned
+      ?'<button onclick="adminUnban(\''+u+'\')" style="background:linear-gradient(135deg,rgba(0,200,100,.25),rgba(0,200,100,.12));color:#8dffb6;border:1px solid rgba(127,255,179,.35);border-radius:999px;padding:6px 10px;cursor:pointer;font-size:10px;font-weight:700">♻️ Avbanna</button>'
+      :'<button onclick="adminKick(\''+u+'\')" style="background:linear-gradient(135deg,rgba(255,190,0,.24),rgba(255,150,0,.12));color:#ffd27a;border:1px solid rgba(255,190,0,.28);border-radius:999px;padding:6px 10px;cursor:pointer;font-size:10px;font-weight:700">👢 Kicka</button>'
+       +'<button onclick="adminBan(\''+u+'\')" style="background:linear-gradient(135deg,rgba(255,70,70,.24),rgba(255,30,30,.12));color:#ff9b9b;border:1px solid rgba(255,80,80,.35);border-radius:999px;padding:6px 10px;cursor:pointer;font-size:10px;font-weight:700">⛔ Banna</button>';
+    var verifyBtn='<button onclick="adminToggleVerify(\''+u+'\')" style="background:linear-gradient(135deg,rgba(100,200,255,.24),rgba(80,150,255,.12));color:#a9deff;border:1px solid rgba(126,200,255,.35);border-radius:999px;padding:6px 10px;cursor:pointer;font-size:10px;font-weight:700">'+(verified?'✅ Avverifiera':'✔️ Verifiera')+'</button>';
+
+    return '<div style="display:flex;gap:10px;padding:10px;border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.02));border:1px solid var(--line);margin-bottom:7px;align-items:flex-start">'
+      +'<div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--p0),var(--p2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;color:#fff;border:2px solid rgba(255,255,255,.16)">'+u.charAt(0).toUpperCase()+'</div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:13px;font-weight:800;color:var(--w);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+u+(verified?' <span style="color:#7ec8ff">✔️</span>':'')+(isBanned?' <span style="color:#ff8888">(Bannad)</span>':'')+'</div>'
+      +'<div style="font-size:10px;color:var(--d);margin-top:2px">🪙 '+(uData.coins||0)+' · 🎚️ Nivå '+(uData.level||1)+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+actions+verifyBtn+'</div>'
+      +'</div></div>';
+  }).join('');
+
+  el.innerHTML=''
+    +'<div style="padding:8px 0">'
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px">'
+      +'<div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📊 Statistik</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+        +'<div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+users.length+'</div><div style="font-size:10px;color:var(--d)">Användare</div></div>'
+        +'<div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+totalMsgs+'</div><div style="font-size:10px;color:var(--d)">Chattmeddelanden</div></div>'
+        +'<div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+bannedList.length+'</div><div style="font-size:10px;color:var(--d)">Bannade</div></div>'
+        +'<div style="background:rgba(255,255,255,.05);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--p1)">'+GAMES.length+'</div><div style="font-size:10px;color:var(--d)">Spel</div></div>'
+      +'</div></div>'
+
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px">'
+      +'<div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">💬 Chat-kontroll</div>'
+      +'<div style="font-size:12px;color:var(--m);margin-bottom:8px">Status: <b>'+(chatEnabled?'Aktiv ✅':'Stannad ⛔')+'</b></div>'
+      +'<button onclick="toggleChatEnabled();renderAdminPanel()" style="width:100%;background:'+(chatEnabled?'rgba(255,50,50,.2);color:#ff7a7a;border:1px solid rgba(255,80,80,.3)':'rgba(0,200,100,.2);color:#7fffb3;border:1px solid rgba(127,255,179,.35)')+';border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:700">'+(chatEnabled?'⛔ Stanna chatten':'✅ Starta chatten')+'</button>'
+    +'</div>'
+
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px">'
+      +'<div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">👥 Användare ('+users.length+')</div>'
+      +'<div style="max-height:320px;overflow-y:auto;padding-right:2px">'+(userRows||'<div style="font-size:11px;color:var(--d);text-align:center;padding:10px">Inga användare ännu</div>')+'</div>'
+    +'</div>'
+
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📢 Broadcast</div><textarea id="adminBroadcastMsg" data-i18n-ph="chatPlaceholder" placeholder="Write a message..." style="width:100%;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--w);font-size:12px;font-family:inherit;resize:vertical;min-height:60px;box-sizing:border-box"></textarea><button onclick="adminBroadcast()" style="width:100%;margin-top:6px;background:var(--p0);color:#fff;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:600">📤 Skicka</button></div>'
+
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📌 Tillkännagivanden</div><div style="display:flex;gap:6px;margin-bottom:8px"><input id="adminAnnounceInput" placeholder="Nytt tillkännagivande..." style="flex:1;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"><button onclick="addAnnouncement()" style="background:var(--p0);color:#fff;border:none;border-radius:8px;padding:7px 10px;cursor:pointer;font-size:12px">+</button></div>'+(announcements.length?announcements.map(function(a,i){return'<div style="background:rgba(255,255,255,.05);border-radius:6px;padding:6px 8px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--m)"><span>'+a+'</span><button onclick="removeAnnouncement('+i+')" style="background:rgba(255,50,50,.2);color:#ff6b6b;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px">✕</button></div>';}).join(''):'<div style="font-size:11px;color:var(--d);text-align:center;padding:8px">Inga tillkännagivanden</div>')+'</div>'
+
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">💰 Ge mynt</div><div style="display:flex;gap:6px;margin-bottom:6px"><input id="adminCoinUser" placeholder="Användarnamn" style="flex:1;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"><input id="adminCoinAmount" type="number" placeholder="Antal" min="1" max="9999" style="width:70px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"></div><button onclick="adminGiveCoins()" style="width:100%;background:linear-gradient(135deg,#ffaa00,#ff6b00);color:#000;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:600">🪙 Ge mynt</button></div>'
+
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🛡️ Admin-rättigheter</div><div style="display:flex;gap:6px;margin-bottom:6px"><input id="adminRoleUser" placeholder="Användarnamn" style="flex:1;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--w);font-size:12px"><button onclick="var u=document.getElementById(\"adminRoleUser\").value.trim();if(u)adminToggleAdmin(u);" style="background:linear-gradient(135deg,var(--p0),var(--p2));color:#fff;border:none;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:600">Ge / Ta admin</button></div><div style="font-size:10px;color:var(--d)">Nuvarande admins: '+getAdminList().join(', ')+'</div></div>'
+
+    +'<div style="background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:12px"><div style="font-size:11px;color:var(--d);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🗑️ Rensa chatt</div><button onclick="adminClearChat()" style="width:100%;background:rgba(255,50,50,.2);color:#ff6b6b;border:1px solid rgba(255,50,50,.3);border-radius:8px;padding:8px;cursor:pointer;font-size:12px;font-weight:600">🗑️ Rensa all chatt</button></div>'
+    +'</div>';
+}
 function getAllUsers(){
   var users=[];
   for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.startsWith("acc_"))users.push(k.substring(4));}
@@ -2079,6 +2164,19 @@ function _safeUsername(u){
 function getVerifiedUsers(){return JSON.parse(localStorage.getItem('verifiedUsers')||'[]');}
 function isVerifiedUser(u){return getVerifiedUsers().indexOf(u)>=0;}
 function isChatEnabled(){return localStorage.getItem('chatEnabled')!=='false';}
+function _setGlobalFlag(key,val){
+  localStorage.setItem(key,typeof val==='string'?val:JSON.stringify(val));
+  if(!_rtdb)return Promise.resolve();
+  return _rtdb.ref('global_settings/'+key).set(val).catch(function(){});
+}
+function _pullGlobalFlags(){
+  if(!_rtdb)return;
+  _rtdb.ref('global_settings').once('value').then(function(snap){
+    var d=snap.val()||{};
+    if(typeof d.chatEnabled==='boolean')localStorage.setItem('chatEnabled',String(d.chatEnabled));
+    if(Array.isArray(d.verifiedUsers))localStorage.setItem('verifiedUsers',JSON.stringify(d.verifiedUsers));
+  }).catch(function(){});
+}
 function updateChatStatusUI(){
   var statusEl=document.getElementById('chatStatusBar');
   if(statusEl)statusEl.textContent='Chatstatus: '+(isChatEnabled()?'Aktiv ✅':'Stannad ⛔');
@@ -2089,8 +2187,11 @@ function updateChatStatusUI(){
   if(sendBtn)sendBtn.disabled=!enabled;
 }
 function toggleChatEnabled(){
-  localStorage.setItem('chatEnabled',String(!isChatEnabled()));
-  updateChatStatusUI();
+  var next=!isChatEnabled();
+  localStorage.setItem('chatEnabled',String(next));
+  _setGlobalFlag('chatEnabled',next);
+  _pullGlobalFlags();
+  setTimeout(updateChatStatusUI,300);
   if(document.getElementById('chatOverlay').classList.contains('open'))loadChatMsgs();
 }
 function adminToggleVerify(u){
@@ -2100,9 +2201,41 @@ function adminToggleVerify(u){
   if(i>=0){list.splice(i,1);toast('Verifiering borttagen för '+u,'ok');}
   else{list.push(u);toast(u+' är nu verifierad','ok');}
   localStorage.setItem('verifiedUsers',JSON.stringify(list));
+  _setGlobalFlag('verifiedUsers',list);
   renderAdminPanel();
   if(document.getElementById('chatOverlay').classList.contains('open'))loadChatMsgs();
 }
+
+function _toHex(buf){return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');}
+function _randomSalt(){var a=new Uint8Array(16);(window.crypto||window.msCrypto).getRandomValues(a);return _toHex(a);}
+function _hashPassword(p,salt,iters){
+  var c=window.crypto||window.msCrypto;
+  if(!c||!c.subtle){return Promise.resolve(btoa(salt+'|'+p));}
+  var enc=new TextEncoder();
+  return c.subtle.importKey('raw',enc.encode(String(p)),'PBKDF2',false,['deriveBits']).then(function(key){
+    return c.subtle.deriveBits({name:'PBKDF2',salt:enc.encode(String(salt)),iterations:iters||120000,hash:'SHA-256'},key,256);
+  }).then(_toHex);
+}
+function _verifyPassword(acc,p){
+  if(!acc)return Promise.resolve(false);
+  if(acc.password_salt&&acc.password_hash){
+    return _hashPassword(p,acc.password_salt,acc.password_iter||120000).then(function(h){return h===acc.password_hash;});
+  }
+  return Promise.resolve(acc.password_hash===btoa(p));
+}
+function _claimUsername(u){
+  if(!_rtdb)return Promise.resolve(true);
+  var key=_usernameKey(u);
+  return _rtdb.ref('username_claims/'+key).transaction(function(cur){
+    if(cur===null)return {username:u,ts:Date.now()};
+    return;
+  }).then(function(res){return !!(res&&res.committed);}).catch(function(){return false;});
+}
+function _releaseUsernameClaim(u){
+  if(!_rtdb)return Promise.resolve();
+  return _rtdb.ref('username_claims/'+_usernameKey(u)).remove().catch(function(){});
+}
+
 function _titleCaseGameName(name){
   var n=(name||'').replace(/^cl/i,'').replace(/[_-]+/g,' ').trim();
   if(!n)return 'Spel';
@@ -2124,21 +2257,23 @@ function _getLocalAccountByUsername(u){
   return null;
 }
 function _findCloudAccount(u){
-  if(_firestore){
+  if(_rtdb){
     var ulc=_usernameKey(u);
-    return _firestore.collection("accounts").where("username_lc","==",ulc).limit(1).get().then(function(snap){
-      if(!snap.empty){
-        var doc=snap.docs[0];
-        var d=doc.data()||{};
-        d._id=doc.id;
-        return d;
-      }
-      return _firestore.collection("accounts").where("username","==",u).limit(1).get().then(function(snap2){
-        if(snap2.empty)return null;
-        var doc2=snap2.docs[0];
-        var d2=doc2.data()||{};
-        d2._id=doc2.id;
-        return d2;
+    return _rtdb.ref('accounts/'+ulc).once('value').then(function(snap){
+      var direct=snap.val();
+      if(direct){direct._id=ulc;return direct;}
+      return _rtdb.ref('accounts').orderByChild('username_lc').equalTo(ulc).limitToFirst(1).once('value').then(function(legacy){
+        var v=legacy.val();
+        if(v){
+          var k=Object.keys(v)[0];
+          var d=v[k]||{};
+          d._id=k;
+          return d;
+        }
+        return _rtdb.ref('user_data/'+u).once('value').then(function(userSnap){
+          if(!userSnap.val())return null;
+          return {username:u,username_lc:ulc,password_hash:'',_id:ulc};
+        });
       });
     });
   }
@@ -2151,10 +2286,15 @@ function _findCloudAccount(u){
   return Promise.resolve(null);
 }
 function _createCloudAccount(u,p){
-  var payload={username:u,username_lc:_usernameKey(u),password_hash:btoa(p),is_admin:isUserAdmin(u),banned:false,created_at:Date.now()};
-  if(_firestore)return _firestore.collection("accounts").add(payload);
-  if(_sb)return _sb.from("accounts").insert(payload);
-  return Promise.reject(new Error("Ingen molndatabas tillgänglig"));
+  var ulc=_usernameKey(u);
+  var salt=_randomSalt();
+  var iter=120000;
+  return _hashPassword(p,salt,iter).then(function(hash){
+    var payload={username:u,username_lc:ulc,password_hash:hash,password_salt:salt,password_iter:iter,is_admin:isUserAdmin(u),banned:false,created_at:Date.now()};
+    if(_rtdb)return _rtdb.ref('accounts/'+ulc).set(payload);
+    if(_sb)return _sb.from("accounts").insert(payload);
+    return Promise.reject(new Error("Ingen molndatabas tillgänglig"));
+  });
 }
 
 function doLogin(){
@@ -2165,7 +2305,6 @@ function doLogin(){
   if(!u||!p){err.textContent="Fyll i alla fält";err.style.display="block";return;}
   if(!_safeUsername(u)){err.textContent="Användarnamn måste vara 3-24 tecken (a-z, 0-9, _ eller -) och får inte innehålla förbjudna ord";err.style.display="block";return;}
 
-  // Admin bypass – works on any device without a DB account
   if(isUserAdmin(u)&&btoa(btoa(p))===ADMINPW){
     loadState(u);state.user=u;state.isAdmin=true;
     localStorage.setItem("lastUser",u);
@@ -2174,37 +2313,47 @@ function doLogin(){
     toast("Välkommen, "+u+"! (Admin)");
     return;
   }
-  if(_firestore||_sb){
-    // --- Molnflöde (konton sparas online) ---
+
+  if(_rtdb||_sb){
     if(mode==="reg"){
       _findCloudAccount(u).then(function(existing){
         if(existing){err.textContent="Användarnamn taget";err.style.display="block";return;}
-        var initSettings={animations:true,sounds:true,darkMode:true,theme:"purple",lang:"sv"};
-        _createCloudAccount(u,p).then(function(){
-          if(_firestore)_firestore.collection("user_data").doc(u).set({username:u,coins:50,xp:0,level:1,favorites:[],games_played:0,settings:initSettings},{merge:true}).catch(function(){});
-          else if(_sb)_sb.from("user_data").insert({username:u,coins:50,xp:0,level:1,favorites:[],games_played:0,settings:initSettings}).then(function(){});
-          localStorage.setItem("acc_"+u,btoa(p));
-          loadState(u);state.user=u;state.isAdmin=isUserAdmin(u);
-          localStorage.setItem("lastUser",u);
-          addCoins(0);
-          state.coins=50;updateHUD();saveState();
-          closeLoginModal();finishLogin();
-          toast("Välkommen, "+u+"! +50 mynt");
-        }).catch(function(e){
-          err.textContent="Fel vid registrering: "+((e&&e.message)||"okänt fel");
-          err.style.display="block";
+        return _claimUsername(u).then(function(claimed){
+          if(!claimed){err.textContent="Användarnamn taget";err.style.display="block";return;}
+          var initSettings={animations:true,sounds:true,darkMode:true,theme:"purple",lang:"sv"};
+          return _createCloudAccount(u,p).then(function(){
+            if(_rtdb)_rtdb.ref('user_data/'+u).update({username:u,coins:50,xp:0,level:1,favorites:[],games_played:0,settings:initSettings}).catch(function(){});
+            else if(_sb)_sb.from("user_data").insert({username:u,coins:50,xp:0,level:1,favorites:[],games_played:0,settings:initSettings}).then(function(){});
+            localStorage.setItem("acc_"+u,btoa(p));
+            closeLoginModal();
+            openLoginModal(false);
+            document.getElementById("loginUser").value=u;
+            document.getElementById("loginPass").value="";
+            toast("Konto skapat! Logga in för att fortsätta.","ok");
+          }).catch(function(e){
+            _releaseUsernameClaim(u);
+            err.textContent="Fel vid registrering: "+((e&&e.message)||"okänt fel");
+            err.style.display="block";
+          });
         });
       });
-    }else{
-      _findCloudAccount(u).then(function(acc){
-        if(!acc){err.textContent="Fel användarnamn eller lösenord";err.style.display="block";return;}
-        if(acc.banned){err.textContent="Ditt konto är bannat";err.style.display="block";return;}
-        if(acc.password_hash!==btoa(p)){err.textContent="Fel användarnamn eller lösenord";err.style.display="block";return;}
-        var userDocPromise=_firestore
-          ? _firestore.collection("user_data").doc(acc.username||u).get().then(function(ud){return (ud&&ud.data)?(ud.data()||{}):{};})
-          : _sb.from("user_data").select("*").eq("username",acc.username||u).limit(1).then(function(ud){return (ud&&ud.data&&ud.data[0])||{};});
+      return;
+    }
+
+    _findCloudAccount(u).then(function(acc){
+      if(!acc){err.textContent="Fel användarnamn eller lösenord";err.style.display="block";return;}
+      if(acc.banned){err.textContent="Ditt konto är bannat";err.style.display="block";return;}
+      _verifyPassword(acc,p).then(function(okPw){
+        if(!okPw){err.textContent="Fel användarnamn eller lösenord";err.style.display="block";return;}
+        var resolvedUser=acc.username||u;
+        if(_rtdb&&acc.password_salt==null){
+          var ns=_randomSalt();
+          _hashPassword(p,ns,120000).then(function(nh){_rtdb.ref('accounts/'+_usernameKey(resolvedUser)).update({password_hash:nh,password_salt:ns,password_iter:120000}).catch(function(){});});
+        }
+        var userDocPromise=_rtdb
+          ? _rtdb.ref('user_data/'+resolvedUser).once('value').then(function(ud){return (ud&&ud.val)?(ud.val()||{}):{};})
+          : _sb.from("user_data").select("*").eq("username",resolvedUser).limit(1).then(function(ud){return (ud&&ud.data&&ud.data[0])||{};});
         userDocPromise.then(function(d){
-          var resolvedUser=acc.username||u;
           state.user=resolvedUser;
           state.coins=d.coins||0;state.xp=d.xp||0;state.level=d.level||1;
           state.favorites=d.favorites||[];state.gamesPlayed=d.games_played||0;
@@ -2218,32 +2367,32 @@ function doLogin(){
           applyDarkMode(state.settings.darkMode===true);
           if(state.settings.theme&&state.settings.theme!=="purple")applyTheme(state.settings.theme);
         });
-      }).catch(function(e){
-        err.textContent="Fel vid inloggning: "+((e&&e.message)||"okänt fel");
-        err.style.display="block";
       });
-    }
-  }else{
-    // --- Lokalt läge (localStorage) ---
-    if(mode==="reg"){
-      if(_getLocalAccountByUsername(u)){err.textContent="Användarnamn taget";err.style.display="block";return;}
-      localStorage.setItem("acc_"+u,btoa(p));
-      loadState(u);state.user=u;state.isAdmin=isUserAdmin(u);
-      localStorage.setItem("lastUser",u);
-      addCoins(50,"Välkomstbonus!");
-      toast("Välkommen, "+u+"! +50 mynt");
-    }else{
-      var localAcc=_getLocalAccountByUsername(u);
-      if(!localAcc||localAcc.password_hash!==btoa(p)){err.textContent="Fel användarnamn eller lösenord";err.style.display="block";return;}
-      if(localAcc.banned){err.textContent="Ditt konto är bannat";err.style.display="block";return;}
-      loadState(localAcc.username);state.user=localAcc.username;
-      state.isAdmin=isUserAdmin(localAcc.username)||(btoa(btoa(p))===ADMINPW);
-      localStorage.setItem("lastUser",localAcc.username);
-      toast("Välkommen tillbaka, "+localAcc.username+"!");
-    }
-    closeLoginModal();
-    finishLogin();
+    }).catch(function(e){
+      err.textContent="Fel vid inloggning: "+((e&&e.message)||"okänt fel");
+      err.style.display="block";
+    });
+    return;
   }
+
+  if(mode==="reg"){
+    if(_getLocalAccountByUsername(u)){err.textContent="Användarnamn taget";err.style.display="block";return;}
+    localStorage.setItem("acc_"+u,btoa(p));
+    loadState(u);state.user=u;state.isAdmin=isUserAdmin(u);
+    localStorage.setItem("lastUser",u);
+    addCoins(50,"Välkomstbonus!");
+    toast("Välkommen, "+u+"! +50 mynt");
+  }else{
+    var localAcc=_getLocalAccountByUsername(u);
+    if(!localAcc||localAcc.password_hash!==btoa(p)){err.textContent="Fel användarnamn eller lösenord";err.style.display="block";return;}
+    if(localAcc.banned){err.textContent="Ditt konto är bannat";err.style.display="block";return;}
+    loadState(localAcc.username);state.user=localAcc.username;
+    state.isAdmin=isUserAdmin(localAcc.username)||(btoa(btoa(p))===ADMINPW);
+    localStorage.setItem("lastUser",localAcc.username);
+    toast("Välkommen tillbaka, "+localAcc.username+"!");
+  }
+  closeLoginModal();
+  finishLogin();
 }
 function checkDailyStreak(){
   if(!state.user)return;
@@ -2259,6 +2408,7 @@ function checkDailyStreak(){
   }
   data.last=today;
   localStorage.setItem(key,JSON.stringify(data));
+  _cloudPush();
   var bonus=Math.min(data.streak*5,50);
   addCoins(bonus,'Daglig inloggning dag '+data.streak);
   setTimeout(function(){
@@ -2304,7 +2454,7 @@ function openChat(){
   _resetWinPos(document.getElementById("chatWin"));
   ov.style.display="flex";
   setTimeout(function(){ov.classList.add("open");},10);
-  closeSidebar();updateChatStatusUI();loadChatMsgs();
+  closeSidebar();_pullGlobalFlags();setTimeout(updateChatStatusUI,150);loadChatMsgs();
 }
 function closeChat(){
   var ov=document.getElementById("chatOverlay");
@@ -2347,15 +2497,15 @@ function _renderChatMsgs(msgs){
     });
   });
 }
-function _chatCol(){return _firestore?_firestore.collection('chat_messages'):null;}
-function _fetchChat(cb){var c=_chatCol();if(!c){cb([]);return;}c.orderBy('timestamp','asc').limit(300).get().then(function(snap){var arr=[];snap.forEach(function(d){arr.push(d.data()||{});});cb(arr);}).catch(function(){cb([]);});}
-function _insertChat(doc,cb){var c=_chatCol();if(!c){cb&&cb(false);return;}c.add(doc).then(function(){cb&&cb(true);}).catch(function(){cb&&cb(false);});}
+function _chatCol(){return _rtdb?_rtdb.ref('chat_messages'):null;}
+function _fetchChat(cb){var c=_chatCol();if(!c){cb([]);return;}c.orderByChild('timestamp').limitToLast(300).once('value').then(function(snap){var arr=[];snap.forEach(function(d){arr.push(d.val()||{});});cb(arr);}).catch(function(){cb([]);});}
+function _insertChat(doc,cb){var c=_chatCol();if(!c){cb&&cb(false);return;}c.push(doc).then(function(){cb&&cb(true);}).catch(function(){cb&&cb(false);});}
 function loadChatMsgs(){
   var sel=document.getElementById('chatTarget');if(sel&&state.user){
     var friends=JSON.parse(localStorage.getItem('friends_'+state.user)||'[]');
     sel.innerHTML='<option value="">Alla</option>'+friends.map(function(f){return '<option value="'+f+'">Privat: '+f+'</option>';}).join('');
   }
-  if(_firestore){
+  if(_rtdb){
     _fetchChat(function(rows){
       var msgs=rows.map(function(r){return{user:r.username||r.user||'?',text:r.text||'',ts:r.timestamp||Date.now(),isAdmin:!!r.is_admin,to:r.to||null,verified:!!r.verified};});
       msgs=msgs.filter(function(m){return !m.to||m.to==='all'||m.to===state.user||m.user===state.user;});
@@ -2384,7 +2534,7 @@ function sendChat(){
   }
   var msg={user:state.user,text:txt,ts:Date.now(),isAdmin:!!state.isAdmin,to:to||null,verified:isVerifiedUser(state.user)};
   inp.value="";updateQuests('chat');
-  if(_firestore){
+  if(_rtdb){
     _insertChat({username:state.user,text:txt,timestamp:msg.ts,is_admin:!!state.isAdmin,to:to||'all',verified:isVerifiedUser(state.user)},function(ok){
       if(!ok){var msgs=JSON.parse(localStorage.getItem("globalChat")||"[]");msgs.push(msg);localStorage.setItem("globalChat",JSON.stringify(msgs));}
       loadChatMsgs();
@@ -2407,12 +2557,12 @@ function submitSuggestion(){
   if(state.user)addCoins(5,"Skickade förslag");
 }
 
-function adminBroadcast(){var msg=document.getElementById('adminBroadcastMsg');if(!msg||!msg.value.trim())return toast('Skriv ett meddelande','error');var txt='📢 '+msg.value.trim();if(_firestore){_insertChat({username:'[ADMIN]',text:txt,timestamp:Date.now(),is_admin:true,to:'all',verified:true},function(){loadChatMsgs();});}else{var msgs=JSON.parse(localStorage.getItem('globalChat')||'[]');msgs.push({user:'[ADMIN]',text:txt,ts:Date.now(),isAdmin:true,to:'all'});localStorage.setItem('globalChat',JSON.stringify(msgs));}msg.value='';toast('Broadcast skickat!','ok');if(document.getElementById('chatMessages'))loadChatMsgs();}
+function adminBroadcast(){var msg=document.getElementById('adminBroadcastMsg');if(!msg||!msg.value.trim())return toast('Skriv ett meddelande','error');var txt='📢 '+msg.value.trim();if(_rtdb){_insertChat({username:'[ADMIN]',text:txt,timestamp:Date.now(),is_admin:true,to:'all',verified:true},function(){loadChatMsgs();});}else{var msgs=JSON.parse(localStorage.getItem('globalChat')||'[]');msgs.push({user:'[ADMIN]',text:txt,ts:Date.now(),isAdmin:true,to:'all'});localStorage.setItem('globalChat',JSON.stringify(msgs));}msg.value='';toast('Broadcast skickat!','ok');if(document.getElementById('chatMessages'))loadChatMsgs();}
 function adminGiveCoins(){var uEl=document.getElementById('adminCoinUser');var aEl=document.getElementById('adminCoinAmount');if(!uEl||!aEl||!uEl.value.trim())return toast('Ange ett användarnamn','error');var amount=parseInt(aEl.value)||0;if(amount<=0)return toast('Ange ett giltigt antal mynt','error');if(uEl.value.trim()===state.user){state.coins+=amount;saveState();updateHUD();}else{var key='jspel_'+uEl.value.trim();var data=JSON.parse(localStorage.getItem(key)||'{}');data.coins=(data.coins||0)+amount;localStorage.setItem(key,JSON.stringify(data));}toast(amount+' mynt gavs till '+uEl.value.trim(),'ok');uEl.value='';aEl.value='';renderAdminPanel();}
 function adminKick(u){if(u===state.user)return toast('Kan inte kicka dig själv','error');toast(u+' kickades','ok');}
 function adminBan(u){if(u===state.user)return toast('Kan inte banna dig själv','error');var banned=JSON.parse(localStorage.getItem('bannedUsers')||'[]');if(banned.indexOf(u)<0){banned.push(u);localStorage.setItem('bannedUsers',JSON.stringify(banned));}toast(u+' bannades','ok');renderAdminPanel();}
 function adminUnban(u){var banned=JSON.parse(localStorage.getItem('bannedUsers')||'[]');var idx=banned.indexOf(u);if(idx>=0){banned.splice(idx,1);localStorage.setItem('bannedUsers',JSON.stringify(banned));}toast(u+' avbannades','ok');renderAdminPanel();}
-function adminClearChat(){if(!confirm('Rensa all chatt?'))return;localStorage.setItem('globalChat','[]');if(_firestore){_chatCol().get().then(function(snap){var b=_firestore.batch();snap.forEach(function(d){b.delete(d.ref);});return b.commit();}).catch(function(){});}toast('Chatten rensades','ok');renderAdminPanel();if(document.getElementById('chatMessages'))loadChatMsgs();}
+function adminClearChat(){if(!confirm('Rensa all chatt?'))return;localStorage.setItem('globalChat','[]');if(_rtdb){_chatCol().remove().catch(function(){});}toast('Chatten rensades','ok');renderAdminPanel();if(document.getElementById('chatMessages'))loadChatMsgs();}
 function showSiteAnnouncements(){
   var ann=JSON.parse(localStorage.getItem('admin_announcements')||'[]');
   var dismissed=JSON.parse(localStorage.getItem('dismissed_announcements')||'[]');
@@ -2650,6 +2800,9 @@ function _doRenderProfileCard(card,username,sbData){
   var nameClass=getNameClass(eq.nameeffect||null);
   var badgesHTML="";
   if(eq.badge)badgesHTML+=getBadgeHTML(eq.badge);
+  var boosts=(uData.settings&&uData.settings.boosts)||{};
+  if(boosts.coin_boost&&boosts.coin_boost>Date.now())badgesHTML+='<span class="pc-badge" style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16655">🪙 Coin x2</span>';
+  if(boosts.xp_boost&&boosts.xp_boost>Date.now())badgesHTML+='<span class="pc-badge" style="background:#7ec8ff22;color:#7ec8ff;border:1px solid #7ec8ff55">⚡ XP x2</span>';
   /* Status */
   var statusHTML=ext.status?'<div class="pc-status"><span class="pc-status-dot"></span>'+ext.status+'</div>':'';
   /* Bio */
@@ -2714,9 +2867,9 @@ function _doRenderProfileCard(card,username,sbData){
     +'<div class="pc-actions">'+actionsHTML+'</div>'
     +(isSelf?'<input type="file" id="pcFileInput" accept="image/*" style="display:none" onchange="handleAvatarUpload(this);closeViewProfile();">':'')
     +'</div>';
-  if(_sb&&!isSelf){
-    _sb.from("accounts").select("username,is_admin").eq("username",username).single().then(function(res){
-      if(res.data&&res.data.is_admin){
+  if(_rtdb&&!isSelf){
+    _findCloudAccount(username).then(function(res){
+      if(res&&res.is_admin){
         var nr=card.querySelector(".pc-name-row");
         if(nr&&!nr.querySelector(".admin-badge")){
           var ab=document.createElement("span");ab.className="pc-badge admin-badge";
@@ -3027,22 +3180,25 @@ document.addEventListener("DOMContentLoaded",function(){
   }
   if(!state.settings.lang)state.settings.lang='sv';if(state.settings&&state.settings.theme&&state.settings.theme!=="purple")applyTheme(state.settings.theme);
   applyDarkMode(state.settings&&state.settings.darkMode===true);
-  updateChatStatusUI();
+  _pullGlobalFlags();
+  setTimeout(updateChatStatusUI,300);
   setInterval(function(){
     if(document.getElementById("chatOverlay").classList.contains("open"))loadChatMsgs();
   },3000);
 
-  // ---- LIVE PRESENCE COUNTER (Firestore + fallback) ----
+  // ---- LIVE PRESENCE COUNTER (Realtime DB + fallback) ----
   var _presenceId=(state.user?('user_'+state.user):('guest_'+Math.random().toString(36).slice(2,8)));
   function updatePresenceCount(){
-    if(_firestore){
+    if(_rtdb){
       var now=Date.now();
-      var ref=_firestore.collection('online_users').doc(_presenceId);
-      ref.set({id:_presenceId,user:state.user||null,ts:now},{merge:true}).then(function(){
-        return _firestore.collection('online_users').where('ts','>=',now-70000).get();
+      var ref=_rtdb.ref('online_users/'+_presenceId);
+      ref.set({id:_presenceId,user:state.user||null,ts:now}).then(function(){
+        return _rtdb.ref('online_users').once('value');
       }).then(function(snap){
         var el=document.getElementById('onlineCount');
-        if(el)el.textContent=snap.size+' '+(T('online')||'online');
+        var all=snap.val()||{};
+        var n=Object.keys(all).filter(function(k){return all[k]&&all[k].ts>=now-70000;}).length;
+        if(el)el.textContent=n+' '+(T('online')||'online');
       }).catch(function(){
         var el=document.getElementById('onlineCount');
         if(el)el.textContent='1 '+(T('online')||'online');
@@ -3054,7 +3210,7 @@ document.addEventListener("DOMContentLoaded",function(){
   }
   updatePresenceCount();
   setInterval(updatePresenceCount,20000);
-  window.addEventListener('beforeunload',function(){if(_firestore){_firestore.collection('online_users').doc(_presenceId).delete().catch(function(){});}});
+  window.addEventListener('beforeunload',function(){if(_rtdb){_rtdb.ref('online_users/'+_presenceId).remove().catch(function(){});}});
   applyLang();
   setTimeout(hideLoader, 600);
 });
