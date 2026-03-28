@@ -169,11 +169,9 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .gamesGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;padding:0 24px 24px;}
 .gameCard{border-radius:14px;background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.5)),var(--glass);border:1px solid rgba(123,44,255,.35);overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s,border-color .2s;position:relative;display:flex;flex-direction:column;}
 .gameCard:hover{transform:translateY(-4px);box-shadow:var(--shadow2);border-color:rgba(181,108,255,.4);}
-.gameCard.locked .gameThumb::after{content:'🔒';position:absolute;top:6px;right:8px;font-size:13px;}
-.gameThumb{height:90px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
-.gameThumbBg{position:absolute;inset:0;opacity:.85;}
-.gameThumbImage{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.92;}
-.gameThumbLetter{font-size:32px;font-weight:900;color:rgba(255,255,255,.9);position:relative;z-index:1;text-shadow:0 2px 8px rgba(0,0,0,.4);letter-spacing:-1px;font-family:'Segoe UI',sans-serif;}
+.gameCard.locked .gameIconBox::after{content:'🔒';position:absolute;top:6px;right:8px;font-size:13px;}
+.gameIconBox{height:90px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--p1),var(--p0));}
+.gameCardEmoji{font-size:34px;position:relative;z-index:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));}
 .gameInfo{padding:9px 10px 8px;}
 .gameName{font-size:12px;font-weight:700;color:var(--w);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px;}
 .gameActions{display:flex;gap:4px;align-items:center;}
@@ -944,55 +942,58 @@ function renderRoadmapPanel(targetEl){
   h+='<div style="text-align:center;font-size:11px;color:var(--d);margin-top:12px;padding:8px">💬 Har du idéer? Använd Förslag i menyn!</div>';
   el.innerHTML=h;
 }
-var GAME_THUMBS={
-  "clrepo.html":"https://images.steamusercontent.com/ugc/2515891228764055078/CE6F8CF68845E1A102E2A5A472FD4FAF31B2FD4D/",
-  "cladifficultgameaboutclimbing.html":"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/2497920/header.jpg",
-  "clhappywheels.html":"https://upload.wikimedia.org/wikipedia/en/8/86/Happy_Wheels_logo.png",
-  "clslimerancher.html":"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/433340/header.jpg",
-  "clcuphead.html":"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/268910/header.jpg",
-  "clbuckshotroulette.html":"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/2835570/header.jpg",
-  "clfivenightsatepsteins.html":"https://images.unsplash.com/photo-1512149673953-1e251807ec9c?auto=format&fit=crop&w=1200&q=80",
-  "clamandatheadventurer.html":"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/2166060/header.jpg",
-  "clminecraft1.21.4.html":"https://upload.wikimedia.org/wikipedia/en/5/51/Minecraft_cover.png",
-  "clwebecomewhatwebehold.html":"https://img.itch.zone/aW1nLzI1NTQxNjkucG5n/original/65s6L5.png"
-};
-function getGameThumbSrcByFile(file){return GAME_THUMBS[file]||"";}
-function getFallbackGameThumb(displayName){
-  var txt=encodeURIComponent((_titleCaseGameName(displayName||"Game")).slice(0,24));
-  var svg="<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 340'>"
-    +"<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>"
-    +"<stop offset='0%' stop-color='%237b2cff'/><stop offset='100%' stop-color='%233a00b7'/>"
-    +"</linearGradient></defs>"
-    +"<rect width='600' height='340' fill='url(%23g)'/>"
-    +"<circle cx='90' cy='70' r='120' fill='rgba(255,255,255,0.08)'/>"
-    +"<circle cx='560' cy='290' r='140' fill='rgba(255,255,255,0.06)'/>"
-    +"<text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='42' font-family='Segoe UI,Arial,sans-serif' font-weight='700'>"+txt+"</text>"
-    +"</svg>";
-  return "data:image/svg+xml;utf8,"+svg;
+var ZONES_URLS=[
+  "https://cdn.jsdelivr.net/gh/gnmathcopy/assets@latest/zones.json",
+  "https://cdn.jsdelivr.net/gh/gnmathcopy/assets@master/zones.json",
+  "https://cdn.jsdelivr.net/gh/gnmathcopy/assets/zones.json"
+];
+var HTML_URL="https://cdn.jsdelivr.net/npm/gn-math.github.io-main@1.0.5/html-main";
+var _remoteGameUrlMap={};
+function _extractFileNameFromZoneUrl(raw){
+  if(!raw||typeof raw!=="string")return"";
+  var resolved=raw.replace(/\{HTML_URL\}/g,HTML_URL);
+  try{
+    var u=new URL(resolved,HTML_URL+"/");
+    var parts=u.pathname.split("/");
+    var last=parts[parts.length-1]||"";
+    return decodeURIComponent(last);
+  }catch(e){return"";}
+}
+async function _loadRemoteGameUrlMap(){
+  for(var i=0;i<ZONES_URLS.length;i++){
+    try{
+      var res=await fetch(ZONES_URLS[i]+"?t="+Date.now(),{cache:"no-store"});
+      if(!res.ok)continue;
+      var zones=await res.json();
+      if(!Array.isArray(zones))continue;
+      zones.forEach(function(zone){
+        var file=_extractFileNameFromZoneUrl(zone&&zone.url);
+        if(file&&zone&&zone.url){
+          var resolved=String(zone.url).replace(/\{HTML_URL\}/g,HTML_URL);
+          _remoteGameUrlMap[file]=resolved;
+        }
+      });
+      return;
+    }catch(e){}
+  }
 }
 function renderRecommendedSection(){
   var el=document.getElementById('recommendedSection');if(!el)return;
   var featured=[
     {f:"clrepo.html",name:"R.E.P.O",emoji:"🤖",desc:"Mörk action och överraskningar",color:"#8b5cf6"},
     {f:"cladifficultgameaboutclimbing.html",name:"A Difficult Game About Climbing",emoji:"🧗",desc:"Klättra utan checkpoints",color:"#f97316"},
-    {f:"clhappywheels.html",name:"Happy Wheels",emoji:"🛞",desc:"Klassisk kaotisk fysik",color:"#ef4444"},
     {f:"clslimerancher.html",name:"Slime Rancher",emoji:"🟣",desc:"Färgglatt ranch-äventyr",color:"#ec4899"},
     {f:"clcuphead.html",name:"Cuphead",emoji:"☕",desc:"Bossfajter i retrostil",color:"#f59e0b"},
-    {f:"clbuckshotroulette.html",name:"Buckshot Roulette",emoji:"🔫",desc:"Riskabelt skräckspel",color:"#22c55e"},
+    {f:"clfivenightsatepsteins.html",name:"Five Nights at Epsteins",emoji:"🕶️",desc:"Nervig skräck över flera nätter",color:"#e11d48"},
     {f:"clamandatheadventurer.html",name:"Amanda the Adventurer",emoji:"📺",desc:"Psykologisk skräck",color:"#14b8a6"},
+    {f:"clminecraft1.21.4.html",name:"Minecraft 1.21.4",emoji:"⛏️",desc:"Bygg, utforska och överlev",color:"#16a34a"},
   ];
   var h='<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;padding:4px 0 8px">';
   featured.forEach(function(g){
     var locked=false;
     try{var idx=GAMES.findIndex(function(x){return x.f===g.f;});if(idx>=0)locked=gameIsLocked(idx);}catch(e){}
-    var thumb=getGameThumbSrcByFile(g.f)||getFallbackGameThumb(g.name);
     h+='<div onclick="openGameByFile(\''+g.f+'\')" style="flex-shrink:0;width:180px;border-radius:16px;background:linear-gradient(135deg,'+g.color+'22,'+g.color+'08);border:1.5px solid '+g.color+'44;padding:16px 14px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden" onmouseenter="this.style.transform=\'scale(1.03)\';this.style.borderColor=\''+g.color+'\'" onmouseleave="this.style.transform=\'\';this.style.borderColor=\''+g.color+'44\'">';
-    if(thumb){
-      h+='<img src="'+thumb+'" loading="lazy" alt="'+g.name+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'" style="width:100%;height:72px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:1px solid '+g.color+'55">';
-      h+='<div style="font-size:32px;margin-bottom:8px;display:none">'+g.emoji+'</div>';
-    }else{
-      h+='<div style="font-size:32px;margin-bottom:8px">'+g.emoji+'</div>';
-    }
+    h+='<div style="font-size:32px;margin-bottom:8px">'+g.emoji+'</div>';
     h+='<div style="font-weight:800;font-size:14px;color:var(--w);margin-bottom:4px">'+g.name+'</div>';
     h+='<div style="font-size:11px;color:var(--d);line-height:1.4">'+g.desc+'</div>';
     h+='<div style="margin-top:10px;display:inline-flex;align-items:center;gap:4px;background:'+g.color+';color:#fff;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700">▶ Spela nu</div>';
@@ -1393,7 +1394,7 @@ function updateGameRatingDisplay(idx){
   if(info.count)html+='<span style="font-size:11px;color:var(--d);margin-left:6px">'+info.avg+' ('+info.count+')</span>';
   el.innerHTML=html;
 }
-function openGame(i){var g=GAMES[i];if(!g)return;if(gameIsLocked(i)){toast('Lås upp spelet i butiken!','error');return;}var gName=_titleCaseGameName(g.name);_currentGameIdx=i;var fb=document.getElementById('gameFavBtn');if(fb)fb.textContent=(state.favorites.indexOf(i)>=0)?'★':'☆';var si=document.getElementById('gameSubInfo');if(si)si.textContent='';var gt=document.getElementById('gameTitle');if(gt)gt.textContent=gName;var ie=document.getElementById('igpInfoEmoji');if(ie)ie.textContent=g.emoji||'🎮';var it=document.getElementById('igpInfoTitle');if(it)it.textContent=gName;var ic=document.getElementById('igpInfoCat');if(ic)ic.textContent=g.cat||'';/* Hide header ui, keep game grid visible below */var filterBar=document.querySelector('.filterBar');var searchWrap=document.querySelector('.searchWrap');var hero=document.querySelector('.hero');var recWrap=document.getElementById('recommendedWrap');if(filterBar)filterBar.style.display='none';if(searchWrap)searchWrap.style.display='none';if(hero)hero.style.display='none';if(recWrap)recWrap.style.display='none';var panel=document.getElementById('inlineGamePanel');if(panel){panel.style.display='flex';setTimeout(function(){try{panel.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){window.scrollTo({top:0,behavior:'smooth'});}},20);}else{window.scrollTo({top:0,behavior:'smooth'});}/* Reload btn */var rb=document.getElementById('igpReloadBtn');if(rb)rb.onclick=function(){var f=document.getElementById('gameFrame');if(f)f.src=f.src;};/* Show inline loader */var ldr=document.getElementById('igpLoader');if(ldr)ldr.style.display='flex';var fr=document.getElementById('gameFrame');if(fr){fr.onload=function(){var l=document.getElementById('igpLoader');if(l)l.style.display='none';fr.onload=null;};fr.src='UGS-Files/'+g.f;}var recent=JSON.parse(localStorage.getItem('recentGames')||'[]');var today=_todayKeyDate();if(!recent.find(function(r){return r.f===g.f&&r.date===today;})){recent.unshift({f:g.f,name:g.name,date:today});if(recent.length>50)recent.pop();localStorage.setItem('recentGames',JSON.stringify(recent));state.gamesPlayed=(state.gamesPlayed||0)+1;}window._gameStartTime=Date.now();updateQuests();saveState();setTimeout(updateGameQuestWidget,200);_cloudPullRating(i,function(){updateGameRatingDisplay(i);});checkAchievements();}
+function openGame(i){var g=GAMES[i];if(!g)return;if(gameIsLocked(i)){toast('Lås upp spelet i butiken!','error');return;}var gName=_titleCaseGameName(g.name);_currentGameIdx=i;var fb=document.getElementById('gameFavBtn');if(fb)fb.textContent=(state.favorites.indexOf(i)>=0)?'★':'☆';var si=document.getElementById('gameSubInfo');if(si)si.textContent='';var gt=document.getElementById('gameTitle');if(gt)gt.textContent=gName;var ie=document.getElementById('igpInfoEmoji');if(ie)ie.textContent=g.emoji||'🎮';var it=document.getElementById('igpInfoTitle');if(it)it.textContent=gName;var ic=document.getElementById('igpInfoCat');if(ic)ic.textContent=g.cat||'';/* Hide header ui, keep game grid visible below */var filterBar=document.querySelector('.filterBar');var searchWrap=document.querySelector('.searchWrap');var hero=document.querySelector('.hero');var recWrap=document.getElementById('recommendedWrap');if(filterBar)filterBar.style.display='none';if(searchWrap)searchWrap.style.display='none';if(hero)hero.style.display='none';if(recWrap)recWrap.style.display='none';var panel=document.getElementById('inlineGamePanel');if(panel){panel.style.display='flex';setTimeout(function(){try{panel.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){window.scrollTo({top:0,behavior:'smooth'});}},20);}else{window.scrollTo({top:0,behavior:'smooth'});}/* Reload btn */var rb=document.getElementById('igpReloadBtn');if(rb)rb.onclick=function(){var f=document.getElementById('gameFrame');if(f)f.src=f.src;};/* Show inline loader */var ldr=document.getElementById('igpLoader');if(ldr)ldr.style.display='flex';var fr=document.getElementById('gameFrame');if(fr){fr.onload=function(){var l=document.getElementById('igpLoader');if(l)l.style.display='none';fr.onload=null;};var remoteSrc=_remoteGameUrlMap[g.f]||'';fr.src=remoteSrc||('UGS-Files/'+g.f);}var recent=JSON.parse(localStorage.getItem('recentGames')||'[]');var today=_todayKeyDate();if(!recent.find(function(r){return r.f===g.f&&r.date===today;})){recent.unshift({f:g.f,name:g.name,date:today});if(recent.length>50)recent.pop();localStorage.setItem('recentGames',JSON.stringify(recent));state.gamesPlayed=(state.gamesPlayed||0)+1;}window._gameStartTime=Date.now();updateQuests();saveState();setTimeout(updateGameQuestWidget,200);_cloudPullRating(i,function(){updateGameRatingDisplay(i);});checkAchievements();}
 var _currentGameIdx=-1;
 function toggleGameFav(){
   if(_currentGameIdx<0)return;
@@ -1533,19 +1534,11 @@ function renderGames(){
     var card=document.createElement("div");
     card.className="gameCard"+(locked?" locked":"");
     card.dataset.idx=realIdx;
-    var thumb=document.createElement("div");thumb.className="gameThumb";
-    var bg=document.createElement("div");bg.className="gameThumbBg";bg.style.background='linear-gradient(135deg,var(--p1),var(--p0))';
-    var thumbSrc=getGameThumbSrcByFile(game.f);
-    var img=document.createElement("img");
-    img.className="gameThumbImage";
-    img.loading="lazy";
-    img.alt=_titleCaseGameName(displayName);
-    img.src=thumbSrc||getFallbackGameThumb(displayName);
-    img.onerror=function(){this.src=getFallbackGameThumb(displayName);};
-    thumb.appendChild(img);
-    var letter=document.createElement("div");letter.className="gameThumbLetter";
-    letter.innerHTML='<span style="font-size:22px">'+getGameIcon(displayName)+'</span>';;
-    thumb.appendChild(bg);thumb.appendChild(letter);
+    card.dataset.file=game.f||"";
+    var iconBox=document.createElement("div");iconBox.className="gameIconBox";
+    var emoji=document.createElement("div");emoji.className="gameCardEmoji";
+    emoji.textContent=getGameIcon(displayName);
+    iconBox.appendChild(emoji);
     var info=document.createElement("div");info.className="gameInfo";
     var nm=document.createElement("div");nm.className="gameName";nm.textContent=_titleCaseGameName(displayName);
     var acts=document.createElement("div");acts.className="gameActions";
@@ -1555,7 +1548,7 @@ function renderGames(){
     fb.dataset.idx=realIdx;
     acts.appendChild(fb);
     info.appendChild(nm);info.appendChild(acts);
-    card.appendChild(thumb);card.appendChild(info);
+    card.appendChild(iconBox);card.appendChild(info);
     grid.appendChild(card);
   });
 }
@@ -3142,6 +3135,7 @@ function renderInventoryWin(){
 document.addEventListener("DOMContentLoaded",function(){
   // Show loader immediately on page load
   showLoader("Coola Mattespel V4");
+  _loadRemoteGameUrlMap();
   document.querySelectorAll(".filterBtn").forEach(function(btn){
     btn.addEventListener("click",function(){
       document.querySelectorAll(".filterBtn").forEach(function(b){b.classList.remove("active");});
