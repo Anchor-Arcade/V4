@@ -153,7 +153,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .hero{padding:36px 24px 20px;text-align:center;}
 .hero h1{font-size:clamp(32px,6vw,64px);font-weight:900;letter-spacing:-.02em;background:linear-gradient(135deg,var(--w) 0%,var(--p1) 60%,var(--p0) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:10px;line-height:1.1;}
 .hero-subtitle{font-size:13px;color:var(--m);max-width:740px;margin:0 auto 12px;line-height:1.45;font-weight:600;}
-.heroAdsLayout{display:grid;grid-template-columns:minmax(220px,320px) minmax(320px,1fr) minmax(220px,320px);gap:18px;align-items:start;padding:20px 16px 8px;width:min(1500px,100%);margin:0 auto;}
+.heroAdsLayout{display:grid;grid-template-columns:minmax(170px,250px) minmax(320px,1fr) minmax(170px,250px);gap:14px;align-items:start;padding:18px 14px 8px;width:min(1350px,100%);margin:0 auto;}
 .heroCenter{min-width:0;}
 .discordBanner{margin:0 auto 10px;max-width:700px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(135deg,rgba(114,137,218,.22),rgba(123,44,255,.24));font-size:13px;font-weight:700;cursor:pointer;}
 .discordBanner a{color:#fff;text-decoration:underline;}
@@ -173,6 +173,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .adSlot{position:relative;min-height:250px;border:1px dashed rgba(181,108,255,.45);border-radius:14px;background:rgba(123,44,255,.05);display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .adSlot.horizontal{min-height:120px;}
 .adSlot.vertical{min-height:0;height:clamp(280px,36vw,470px);}
+.heroAdsLayout .adSlot.vertical{height:clamp(170px,24vw,290px);}
 .adSlot.insideGame{background:rgba(123,44,255,.07);}
 .adSlot ins.adsbygoogle{display:block!important;width:100%;height:100%;min-height:inherit;}
 .adFallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:14px;font-weight:800;font-size:20px;color:#ff7f9f;background:linear-gradient(180deg,rgba(20,6,32,.88),rgba(15,5,25,.95));}
@@ -3252,9 +3253,8 @@ document.addEventListener("DOMContentLoaded",function(){
   },3000);
 
   // ---- LIVE PRESENCE COUNTER (Realtime DB + fallback) ----
-  var _presenceId=(state.user?('user_'+state.user):('guest_'+Math.random().toString(36).slice(2,8)));
-  var _presenceUserRef=null;
-  var _presenceConnRef=null;
+  var _presenceSessionId='sess_'+Math.random().toString(36).slice(2,12);
+  var _presenceSessionRef=null;
   var _presenceListRef=null;
   var _presenceConnectedRef=null;
   function setOnlineCount(n){
@@ -3267,38 +3267,28 @@ document.addEventListener("DOMContentLoaded",function(){
       return;
     }
     _presenceListRef=window._onlineRtdb.ref('Precense');
-    _presenceUserRef=_presenceListRef.child(_presenceId);
+    _presenceSessionRef=_presenceListRef.child(_presenceSessionId);
     _presenceConnectedRef=window._onlineRtdb.ref('.info/connected');
     _presenceConnectedRef.on('value',function(snap){
       if(!snap.val())return;
-      _presenceConnRef=_presenceUserRef.push();
-      _presenceConnRef.onDisconnect().remove();
-      _presenceUserRef.onDisconnect().remove();
-      _presenceConnRef.set({
+      _presenceSessionRef.onDisconnect().remove();
+      _presenceSessionRef.set({
         ts:firebase.database.ServerValue.TIMESTAMP,
-        user:state.user||null
+        user:state.user||null,
+        session:_presenceSessionId
       });
     });
     _presenceListRef.on('value',function(snap){
       var all=snap.val()||{};
-      var n=0;
-      Object.keys(all).forEach(function(userKey){
-        if(all[userKey]&&typeof all[userKey]==='object'){
-          var connCount=Object.keys(all[userKey]).filter(function(connKey){
-            return all[userKey][connKey]&&typeof all[userKey][connKey]==='object';
-          }).length;
-          if(connCount>0)n++;
-        }
-      });
-      setOnlineCount(n||1);
+      var n=Object.keys(all).length;
+      setOnlineCount(Math.max(1,n));
     },function(){
       setOnlineCount(1);
     });
   }
   initRealtimePresence();
   window.addEventListener('beforeunload',function(){
-    if(_presenceConnRef)_presenceConnRef.remove().catch(function(){});
-    if(_presenceUserRef)_presenceUserRef.remove().catch(function(){});
+    if(_presenceSessionRef)_presenceSessionRef.remove().catch(function(){});
   });
   applyLang();
   setTimeout(hideLoader, 600);
